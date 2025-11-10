@@ -37,6 +37,8 @@ dependencies:
   dio: ^5.9.0
   shared_preferences: ^2.5.3
   dropdown_search: ^6.0.2
+  flutter_blue_plus: ^1.32.10
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

@@ -11,8 +11,11 @@ import 'package:lite/screens/login_page.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/snackbar_manager.dart';
 import 'package:lite/widgets/add_customer_dialog.dart';
+import 'package:lite/widgets/clear_confirmation_dialog.dart';
 import 'package:lite/widgets/logout_dialog.dart';
+import 'package:lite/widgets/print_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -503,6 +506,12 @@ class _HomePageState extends State<HomePage> {
       }
     }
     SnackbarManager.showSuccess(context, message: 'Item added to cart');
+    
+    // Reset quantity to 1 after successfully adding to cart
+    setState(() {
+      _selectedQuantity = 1;
+      _quantityController.text = '$_selectedQuantity';
+    });
   }
 
   void _removeFromCart(int index) {
@@ -531,6 +540,28 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  void _showClearConfirmationDialog() {
+    ClearConfirmationDialog.show(
+      context: context,
+      onClear: _performClear,
+    );
+  }
+
+  void _performClear() {
+    setState(() {
+      _selectedCustomer = null;
+      _cartItems = [];
+      _selectedItem = null;
+      _selectedInventory = null;
+      _selectedQuantity = 1;
+      _quantityController.text = '$_selectedQuantity';
+    });
+    SnackbarManager.showSuccess(
+      context,
+      message: 'All fields cleared',
+    );
+  }
+
   double get _cartItemsTotal {
     return _cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
   }
@@ -540,6 +571,293 @@ class _HomePageState extends State<HomePage> {
     final formatted = "${now.year % 100}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}"
         "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}";
     return formatted; // Format: yyMMddHHmmss
+  }
+
+  Future<void> _showPrintDialog() async {
+    print('🖨️ Opening Print Dialog...');
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        print('✅ Print Dialog opened successfully');
+        return const PrintDialog();
+      },
+    );
+  }
+
+  Future<void> _printBill() async {
+    // Check if Bluetooth device is connected
+    BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
+    if (connectedDevice == null) {
+      SnackbarManager.showError(
+        context,
+        message:
+            'No Bluetooth printer connected. Please connect a printer first.',
+      );
+      return;
+    }
+
+    // Check if customer is selected
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer before printing.',
+      );
+      return;
+    }
+
+    // Check if items are added to cart
+    if (_cartItems.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please add items to cart before printing.',
+      );
+      return;
+    }
+
+    print('🖨️ Starting direct print process...');
+
+    try {
+      // Check if device is still connected
+      BluetoothConnectionState connectionState =
+          await connectedDevice.connectionState.first;
+      if (connectionState != BluetoothConnectionState.connected) {
+        SnackbarManager.showError(
+          context,
+          message: 'Bluetooth printer disconnected. Please reconnect.',
+        );
+        return;
+      }
+
+      // Discover services
+      List<BluetoothService> services = await connectedDevice
+          .discoverServices();
+      BluetoothService? printerService;
+      BluetoothCharacteristic? printerCharacteristic;
+
+      // Look for printer service (common UUIDs for thermal printers)
+      for (BluetoothService service in services) {
+        print('🔍 Found service: ${service.uuid}');
+
+        // Check for common printer service UUIDs
+        if (service.uuid.toString().toUpperCase().contains('FFE0') ||
+            service.uuid.toString().toUpperCase().contains('FFE1') ||
+            service.uuid.toString().toUpperCase().contains('00001800') ||
+            service.uuid.toString().toUpperCase().contains('00001801')) {
+          printerService = service;
+
+          // Look for printer characteristic
+          for (BluetoothCharacteristic characteristic
+              in service.characteristics) {
+            print('🔍 Found characteristic: ${characteristic.uuid}');
+            if (characteristic.properties.write ||
+                characteristic.properties.writeWithoutResponse) {
+              printerCharacteristic = characteristic;
+              break;
+            }
+          }
+          break;
+        }
+      }
+
+      if (printerCharacteristic == null) {
+        // If no specific printer service found, try the first writable characteristic
+        for (BluetoothService service in services) {
+          for (BluetoothCharacteristic characteristic
+              in service.characteristics) {
+            if (characteristic.properties.write ||
+                characteristic.properties.writeWithoutResponse) {
+              printerCharacteristic = characteristic;
+              printerService = service;
+              break;
+            }
+          }
+          if (printerCharacteristic != null) break;
+        }
+      }
+
+      if (printerCharacteristic == null) {
+        throw Exception('No writable characteristic found for printing');
+      }
+
+      print('✅ Found printer characteristic: ${printerCharacteristic.uuid}');
+
+      // Generate print content
+      String printContent = _generateBillContent();
+      List<int> printData = _convertToPrintData(printContent);
+
+      // Send data to printer
+      await _sendDataInChunks(printerCharacteristic, printData);
+
+      SnackbarManager.showSuccess(
+        context,
+        message: 'Bill printed successfully!',
+      );
+
+      print('✅ Print job completed successfully');
+    } catch (e) {
+      print('❌ ERROR: Failed to print: $e');
+      SnackbarManager.showError(context, message: 'Print failed: $e');
+    }
+  }
+
+  String _generateBillContent() {
+    StringBuffer content = StringBuffer();
+    int totalWidth = 32; // Total width for alignment
+    
+    // Header
+    content.writeln();
+    content.writeln('${businessName ?? 'Business Name'}');
+    content.writeln();
+
+    // Customer info
+    String customerStr = _selectedCustomer!.name;
+    int customerSpace = totalWidth - customerStr.length - ('Customer:').length;
+    content.writeln('Customer:' + ' ' * customerSpace + customerStr);
+
+    // Transaction ID
+    final transactionId = generateTransactionID();
+    String transactionIdLabel = 'Transaction ID:';
+    int transactionIdSpace = totalWidth - transactionIdLabel.length - transactionId.length;
+    content.writeln(transactionIdLabel + ' ' * transactionIdSpace + transactionId);
+
+    // Date and time
+    String dateTimeTitle = 'Printed at:';
+    String date = DateTime.now().toString().split(' ')[0];
+    String time = DateTime.now().toString().split(' ')[1].split('.')[0];
+    int dateTimeTotalSpaces =
+        (totalWidth - 1 - dateTimeTitle.length - date.length - time.length);
+    content.writeln(
+      dateTimeTitle + ' ' * dateTimeTotalSpaces + date + ' ' + time,
+    );
+    // content.writeln();
+
+    // Items
+    content.writeln('-' * totalWidth);
+    for (var item in _cartItems) {
+      // Item name (left-aligned)
+      String? batchNoStr = '';
+      if (item.batchNumber != null) {
+        batchNoStr = '-${item.batchNumber}';
+      }
+
+      String displayNameStr = item.itemDisplayName + batchNoStr;
+      String totalStr = item.totalPrice.toStringAsFixed(2);
+      int displayNameSpace =
+          totalWidth - displayNameStr.length ;
+      content.writeln(displayNameStr + ' ' * displayNameSpace );
+
+      // Quantity and price (left-aligned)
+      String qtyPriceStr = '(${item.quantity} x ${item.salesPrice})';
+      int qtyPriceSpace = totalWidth - qtyPriceStr.length - totalStr.length;
+      content.writeln(qtyPriceStr + ' ' * qtyPriceSpace + totalStr);
+    }
+
+    // Totals
+    content.writeln('-' * totalWidth);
+    String totalLabel = 'Total:';
+    String total = _cartItemsTotal.toStringAsFixed(2);
+    int totalSpace = totalWidth - totalLabel.length - total.length;
+    content.writeln(totalLabel + ' ' * totalSpace + total);
+    content.writeln();
+
+    content.writeln('Thank you for your purchase!');
+    content.writeln('Software by JSoft');
+
+    return content.toString();
+  }
+
+  List<int> _convertToPrintData(String content) {
+    // Split content into sections
+    List<String> lines = content.split('\n');
+    
+    // Add ESC/POS commands for thermal printer
+    List<int> printData = [];
+
+    // Initialize printer
+    printData.addAll([0x1B, 0x40]); // ESC @ - Initialize printer
+
+    // Find business name line and thank you section
+    int businessNameIndex = -1;
+    int thankYouIndex = -1;
+    String businessNameText = businessName ?? 'Business Name';
+    
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i].trim();
+      // Business name is typically after the first empty line
+      if (businessNameIndex == -1 && line.isNotEmpty && 
+          (line == businessNameText || line.contains(businessNameText))) {
+        businessNameIndex = i;
+      }
+      // Thank you section
+      if (line.contains('Thank you for your purchase!')) {
+        thankYouIndex = i;
+      }
+    }
+
+    // Process each line with appropriate alignment
+    for (int i = 0; i < lines.length; i++) {
+      String line = lines[i];
+      
+      // Center business name
+      if (i == businessNameIndex) {
+        printData.addAll([0x1B, 0x61, 0x01]); // ESC a 1 - Center alignment
+        printData.addAll((line + '\n').codeUnits);
+        printData.addAll([0x1B, 0x61, 0x00]); // ESC a 0 - Left alignment
+      }
+      // Center thank you section (both "Thank you" and "Software by" lines)
+      else if (thankYouIndex != -1 && i >= thankYouIndex && 
+               (line.trim().contains('Thank you') || line.trim().contains('Software by'))) {
+        if (i == thankYouIndex) {
+          printData.addAll([0x1B, 0x61, 0x01]); // ESC a 1 - Center alignment
+        }
+        printData.addAll((line + '\n').codeUnits);
+        // Switch back to left alignment after "Software by" line
+        if (line.trim().contains('Software by')) {
+          printData.addAll([0x1B, 0x61, 0x00]); // ESC a 0 - Left alignment
+        }
+      }
+      // Left align everything else
+      else {
+        printData.addAll((line + '\n').codeUnits);
+      }
+    }
+
+    // Add line feeds and cut
+    printData.addAll([0x0A, 0x0A, 0x0A]); // Line feeds
+    printData.addAll([0x1D, 0x56, 0x00]); // GS V 0 - Full cut
+
+    return printData;
+  }
+
+  Future<void> _sendDataInChunks(
+    BluetoothCharacteristic characteristic,
+    List<int> data,
+  ) async {
+    const int chunkSize = 20; // Send data in small chunks
+
+    for (int i = 0; i < data.length; i += chunkSize) {
+      int end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
+      List<int> chunk = data.sublist(i, end);
+
+      print('📤 Sending chunk ${i ~/ chunkSize + 1}: ${chunk.length} bytes');
+
+      try {
+        if (characteristic.properties.writeWithoutResponse) {
+          await characteristic.write(chunk, withoutResponse: true);
+        } else {
+          await characteristic.write(chunk);
+        }
+
+        // Small delay between chunks
+        await Future.delayed(const Duration(milliseconds: 50));
+      } catch (e) {
+        print('❌ ERROR: Failed to send chunk: $e');
+        throw Exception('Failed to send data chunk: $e');
+      }
+    }
+
+    print('✅ All data chunks sent successfully');
   }
 
   List<Map<String, dynamic>> _buildLineItems() {
@@ -767,6 +1085,11 @@ class _HomePageState extends State<HomePage> {
         title: Text(businessName ?? 'Business Name'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.print),
+            onPressed: _showPrintDialog,
+            tooltip: 'Print',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
               LogoutDialog.show(
@@ -973,7 +1296,7 @@ class _HomePageState extends State<HomePage> {
                                   _onInventorySelected(inventory);
                                 },
                                 child: Container(
-                                  margin: const EdgeInsets.only(right: 12),
+                                  margin: const EdgeInsets.only(right: 2),
                                   child: Card(
                                   elevation: isSelected ? 4 : 1,
                                   // color: isSelected ? Color(0xffd41818).withOpacity(0.1) : Colors.white,
@@ -1307,8 +1630,7 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              // onPressed: _printBill,
-                              onPressed: (){},
+                              onPressed: _printBill,
                               icon: Icon(Icons.print),
                               label: Text('Print'),
                               style: ElevatedButton.styleFrom(
@@ -1343,6 +1665,29 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Clear button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _showClearConfirmationDialog,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.grey[600],
+                            foregroundColor: Colors.white,
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: Text(
+                            'Clear',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 72),
 

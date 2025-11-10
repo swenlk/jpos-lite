@@ -39,11 +39,12 @@ class _LoginPageState extends State<LoginPage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     // JMAP Logo
-                    Image.asset(
-                      'assets/images/jrent_white.png',
+                    // Image.asset(
+                    //   'assets/images/jrent_white.png',
                       // height: 80,
-                      width: 380,
-                    ),
+                      // width: 380,
+                    // ),
+                    Text('JPOS',style: TextStyle(color: Colors.white,fontSize: 120.0,fontWeight: FontWeight.bold),)
                   ],
                 ),
               ),
