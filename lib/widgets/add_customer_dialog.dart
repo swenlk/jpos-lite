@@ -17,6 +17,10 @@ class AddCustomerDialog extends StatefulWidget {
 class _AddCustomerDialogState extends State<AddCustomerDialog> {
   String? activeToken;
   bool _skipVerification = true;
+  bool _isLoading = false;
+  bool _otpSent = false;
+  String? _receivedOtp;
+  String? _customerId;
 
   final _nameController = TextEditingController();
   final _contactController = TextEditingController();
@@ -43,6 +47,238 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
       activeToken = prefs.getString('activeToken');
       print('token - ${activeToken}');
     });
+  }
+
+  Future<void> _createCustomer() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      final requestBody = {
+        'activeToken': activeToken,
+        'name': _nameController.text.trim(),
+        'contactNumber': _contactController.text.trim(),
+        'skipVerification': _skipVerification,
+      };
+
+      print('📡 Calling create_customer API with: $requestBody');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.createCustomer,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Create customer response: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (jsonResponse['status_code'] == 'S1000') {
+          final customerData = jsonResponse['customer'];
+
+          if (_skipVerification) {
+            // Success - close dialog and show success message
+            SnackbarManager.showSuccess(
+              context,
+              message: 'Customer created successfully!',
+            );
+            widget.onSave(
+              _nameController.text.trim(),
+              _contactController.text.trim(),
+            );
+            Navigator.of(context).pop();
+          } else {
+            // OTP verification required
+            setState(() {
+              _otpSent = true;
+              _receivedOtp = customerData['otp']?.toString();
+              _customerId = customerData['_id']?.toString();
+            });
+            SnackbarManager.showSuccess(
+              context,
+              message: 'OTP sent successfully!',
+            );
+          }
+        } else {
+          final errorMessage = jsonResponse['status_description'] ??
+              'Failed to create customer';
+          SnackbarManager.showError(context, message: errorMessage);
+        }
+      } else {
+        final errorMessage = jsonResponse['status_description'] ??
+            jsonResponse['message'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during create customer: $e');
+      String errorMessage = 'Error creating customer';
+      if (e.response != null) {
+        final errorResponse = e.response!.data;
+        errorMessage = errorResponse['status_description'] ??
+            errorResponse['message'] ??
+            'Server error';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please try again.';
+      } else {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      SnackbarManager.showError(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _verifyCustomer() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    final enteredOtp = _otpController.text.trim();
+
+    if (enteredOtp != _receivedOtp) {
+      SnackbarManager.showError(
+        context,
+        message: 'Invalid OTP. Please try again.',
+      );
+      return;
+    }
+
+    if (activeToken == null || _customerId == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Missing required information. Please try again.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      final requestBody = {
+        'activeToken': activeToken,
+        'customerId': _customerId,
+      };
+
+      print('📡 Calling verify_customer API with: $requestBody');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.verifyCustomer,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Verify customer response: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (jsonResponse['status_code'] == 'S1000') {
+          SnackbarManager.showSuccess(
+            context,
+            message: 'Customer verified successfully!',
+          );
+          widget.onSave(
+            _nameController.text.trim(),
+            _contactController.text.trim(),
+          );
+          Navigator.of(context).pop();
+        } else {
+          final errorMessage = jsonResponse['status_description'] ??
+              'Failed to verify customer';
+          SnackbarManager.showError(context, message: errorMessage);
+        }
+      } else {
+        final errorMessage = jsonResponse['status_description'] ??
+            jsonResponse['message'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during verify customer: $e');
+      String errorMessage = 'Error verifying customer';
+      if (e.response != null) {
+        final errorResponse = e.response!.data;
+        errorMessage = errorResponse['status_description'] ??
+            errorResponse['message'] ??
+            'Server error';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please try again.';
+      } else {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      SnackbarManager.showError(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _handleButtonPress() {
+    if (!_skipVerification && _otpSent) {
+      _verifyCustomer();
+    } else {
+      _createCustomer();
+    }
   }
 
   @override
@@ -168,10 +404,9 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                   ],
                 ),
 
-                const SizedBox(height: 16.0),
-
-                // OTP text field (only shown when verification is not skipped)
-                if (!_skipVerification)
+                // OTP text field (only shown when verification is not skipped and OTP is sent)
+                if (!_skipVerification && _otpSent) ...[
+                  const SizedBox(height: 16.0),
                   TextFormField(
                     controller: _otpController,
                     keyboardType: TextInputType.number,
@@ -199,7 +434,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                       ),
                     ),
                     validator: (value) {
-                      if (!_skipVerification) {
+                      if (!_skipVerification && _otpSent) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter the OTP';
                         }
@@ -207,6 +442,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                       return null;
                     },
                   ),
+                ],
 
                 const SizedBox(height: 16.0),
 
@@ -258,21 +494,34 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: _isLoading ? null : _handleButtonPress,
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8.0),
                             ),
                           ),
-                          child: Text(
-                            _skipVerification ? 'Save' : 'Send OTP',
-                            style: TextStyle(
-                              fontSize: 16.0,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white,
-                            ),
-                          ),
+                          child: _isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                  ),
+                                )
+                              : Text(
+                                  _skipVerification
+                                      ? 'Save'
+                                      : (_otpSent ? 'Verify' : 'Send OTP'),
+                                  style: const TextStyle(
+                                    fontSize: 16.0,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.white,
+                                  ),
+                                ),
                         ),
                       ),
                     ),
