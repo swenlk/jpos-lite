@@ -535,6 +535,229 @@ class _HomePageState extends State<HomePage> {
     return _cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
   }
 
+  String generateTransactionID() {
+    final now = DateTime.now();
+    final formatted = "${now.year % 100}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}"
+        "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}";
+    return formatted; // Format: yyMMddHHmmss
+  }
+
+  List<Map<String, dynamic>> _buildLineItems() {
+    final List<Map<String, dynamic>> lineItems = [];
+
+    for (final cartItem in _cartItems) {
+      // Find the full item details from _items list
+      final item = _items.firstWhere(
+        (item) => item.id == cartItem.itemId,
+        orElse: () => Item(
+          id: cartItem.itemId,
+          category: '',
+          code: '',
+          displayName: cartItem.itemDisplayName,
+          inventoried: cartItem.batchNumber != null,
+          inventory: [],
+          name: cartItem.itemDisplayName,
+          purchasePrice: '0.0',
+          salesPrice: cartItem.salesPrice,
+        ),
+      );
+
+      // Find inventory details if inventoried
+      Inventory? inventory;
+      if (cartItem.batchNumber != null) {
+        inventory = item.inventory.firstWhere(
+          (inv) => inv.batchNumber == cartItem.batchNumber,
+          orElse: () => Inventory(
+            id: '',
+            batchNumber: cartItem.batchNumber!,
+            createdDate: '',
+            purchasePrice: '0.0',
+            salesPrice: cartItem.salesPrice,
+            stock: '0',
+          ),
+        );
+      }
+
+      final qty = cartItem.quantity;
+      final itemPrice = double.parse(cartItem.salesPrice);
+      final lineTotal = (itemPrice * qty);
+
+      lineItems.add({
+        "count": qty.toString(),
+        "discount": "0.00",
+        "discountType": "0.00",
+        "discountPercentage": "0.00",
+        "itemId": cartItem.itemId,
+        "lineTotal": lineTotal.toStringAsFixed(2),
+        "salesPrice": cartItem.salesPrice,
+        "purchasePrice": inventory?.purchasePrice ?? item.purchasePrice ?? "0.0",
+        "inventoryId": inventory?.id,
+        "itemCode": item.code,
+        "itemName": item.name,
+        "displayName": item.displayName,
+        "categoryName": item.category,
+        "inventoried": cartItem.batchNumber != null,
+        "batchNumber": cartItem.batchNumber,
+        "staffId": null,
+        "staffName": null,
+      });
+    }
+
+    return lineItems;
+  }
+
+  Future<void> _submitTransaction() async {
+    // Validate customer selection
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer',
+      );
+      return;
+    }
+
+    // Validate cart is not empty
+    if (_cartItems.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Cart is empty. Please add items to cart',
+      );
+      return;
+    }
+
+    // Validate active token
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      final transactionId = generateTransactionID();
+      final subTotal = _cartItemsTotal.toStringAsFixed(2);
+      final total = _cartItemsTotal.toStringAsFixed(2);
+      final now = DateTime.now();
+      final orderDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+
+      final lineItems = _buildLineItems();
+
+      final requestBody = {
+        "activeToken": activeToken,
+        "transactionId": transactionId,
+        "transactionType": "CUSTOMER",
+        "customerId": _selectedCustomer!.id,
+        "subTotal": subTotal,
+        "discount": "0.00",
+        "totalDiscountValue": null,
+        "totalDiscountPercentage": null,
+        "total": total,
+        "balance": "0.00",
+        "cardPayment": "0.00",
+        "cashPayment": total,
+        "lineItems": lineItems,
+        "tableId": null,
+        "tableName": null,
+        "staffId": null,
+        "staffName": null,
+        "info": null,
+        "staffOverride": false,
+        "orderType": null,
+        "serviceCharge": null,
+        "vatAmount": null,
+        "vatValue": null,
+        "note": null,
+        "returns": null,
+        "quotation": false,
+        "orderDate": orderDate,
+      };
+
+      print('📤 Submitting transaction: $transactionId');
+      print('Request body: ${json.encode(requestBody)}');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.completeTransaction,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Transaction response received: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Clear cart after successful submission
+        setState(() {
+          _selectedCustomer = null;
+          _cartItems = [];
+          _selectedItem = null;
+          _selectedInventory = null;
+          _selectedQuantity = 1;
+          _quantityController.text = '$_selectedQuantity';
+        });
+
+        SnackbarManager.showSuccess(
+          context,
+          message: 'Transaction completed successfully!',
+        );
+
+        print('✅ Transaction completed successfully');
+      } else {
+        final errorMessage =
+            jsonResponse?['status_description'] ??
+                jsonResponse?['message'] ??
+                'Server returned status ${response.statusCode}';
+        throw Exception(errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during transaction: $e');
+      String errorMessage = 'Error submitting transaction';
+
+      if (e.response != null) {
+        print('Response status: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+
+        if (e.response?.statusCode == 403) {
+          errorMessage =
+              'Access denied. Please check your permissions or try logging in again.';
+        } else if (e.response?.statusCode == 401) {
+          errorMessage = 'Authentication failed. Please login again.';
+        } else {
+          errorMessage =
+              e.response?.data?['status_description'] ??
+                  e.response?.data?['message'] ??
+                  'Server error (${e.response?.statusCode})';
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        errorMessage =
+            'Connection timeout. Please check your internet connection.';
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Request timeout. Please try again.';
+      } else {
+        errorMessage = 'Network error: ${e.message}';
+      }
+
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ General error during transaction: $e');
+      SnackbarManager.showError(context, message: 'Unexpected error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -947,23 +1170,34 @@ class _HomePageState extends State<HomePage> {
                                         flex: 3,
                                         child: Row(
                                           children: [
-                                            Column(
-                                              crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  cartItem.itemDisplayName,
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 13,
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    cartItem.itemDisplayName,
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 13,
+                                                    ),
+                                                    maxLines: 2,
+                                                    overflow: TextOverflow.ellipsis,
                                                   ),
-                                                  overflow: TextOverflow.ellipsis,
-                                                  maxLines: 2,
-                                                ),
-                                                if (cartItem.batchNumber != null) ...[
+                                                  if (cartItem.batchNumber != null) ...[
+                                                    SizedBox(height: 2),
+                                                    Text(
+                                                      'Batch: ${cartItem.batchNumber}',
+                                                      style: TextStyle(
+                                                        fontSize: 12,
+                                                        color: Colors.grey[600],
+                                                      ),
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                  ],
                                                   SizedBox(height: 2),
                                                   Text(
-                                                    'Batch: ${cartItem.batchNumber}',
+                                                    'Rs. ${cartItem.salesPrice}',
                                                     style: TextStyle(
                                                       fontSize: 12,
                                                       color: Colors.grey[600],
@@ -971,16 +1205,7 @@ class _HomePageState extends State<HomePage> {
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
                                                 ],
-                                                SizedBox(height: 2),
-                                                Text(
-                                                  'Rs. ${cartItem.salesPrice}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    color: Colors.grey[600],
-                                                  ),
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -1099,8 +1324,7 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: ElevatedButton(
-                              // onPressed: _submitBooking,
-                              onPressed: (){},
+                              onPressed: _submitTransaction,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Color(0xffd41818),
                                 foregroundColor: Colors.white,
