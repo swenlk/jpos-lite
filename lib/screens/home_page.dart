@@ -14,6 +14,7 @@ import 'package:lite/widgets/add_customer_dialog.dart';
 import 'package:lite/widgets/clear_confirmation_dialog.dart';
 import 'package:lite/widgets/logout_dialog.dart';
 import 'package:lite/widgets/print_dialog.dart';
+import 'package:lite/widgets/checkout_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -585,6 +586,46 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _showCheckoutDialog() async {
+    // Validate customer selection
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer',
+      );
+      return;
+    }
+
+    // Validate cart is not empty
+    if (_cartItems.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Cart is empty. Please add items to cart',
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return CheckoutDialog(
+          totalAmount: _cartItemsTotal,
+          onComplete: (paidAmount, balance, paymentType, otherPaymentMethod, paymentReference, splitPayments) {
+            _submitTransaction(
+              paidAmount: paidAmount,
+              balance: balance,
+              paymentType: paymentType,
+              otherPaymentMethod: otherPaymentMethod,
+              paymentReference: paymentReference,
+              splitPayments: splitPayments,
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _printBill() async {
     // Check if Bluetooth device is connected
     BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
@@ -924,7 +965,14 @@ class _HomePageState extends State<HomePage> {
     return lineItems;
   }
 
-  Future<void> _submitTransaction() async {
+  Future<void> _submitTransaction({
+    required double paidAmount,
+    required double balance,
+    required PaymentType paymentType,
+    OtherPaymentMethod? otherPaymentMethod,
+    String? paymentReference,
+    List<SplitPaymentData>? splitPayments,
+  }) async {
     // Validate customer selection
     if (_selectedCustomer == null) {
       SnackbarManager.showError(
@@ -965,6 +1013,66 @@ class _HomePageState extends State<HomePage> {
 
       final lineItems = _buildLineItems();
 
+      // Set payment amounts based on payment type
+      double cashPaymentAmount = 0.0;
+      double cardPaymentAmount = 0.0;
+      double bankPaymentAmount = 0.0;
+      double chequePaymentAmount = 0.0;
+      double voucherPaymentAmount = 0.0;
+      String? paymentReferenceBank;
+      String? paymentReferenceCheque;
+      String? paymentReferenceVoucher;
+
+      if (paymentType == PaymentType.split && splitPayments != null) {
+        // Calculate split payment amounts
+        for (var splitPayment in splitPayments) {
+          switch (splitPayment.paymentMethod) {
+            case SplitPaymentMethod.cash:
+              cashPaymentAmount += splitPayment.paidAmount;
+              break;
+            case SplitPaymentMethod.card:
+              cardPaymentAmount += splitPayment.paidAmount;
+              break;
+            case SplitPaymentMethod.bankTransfer:
+              bankPaymentAmount += splitPayment.paidAmount;
+              paymentReferenceBank = splitPayment.paymentReference;
+              break;
+            case SplitPaymentMethod.cheque:
+              chequePaymentAmount += splitPayment.paidAmount;
+              paymentReferenceCheque = splitPayment.paymentReference;
+              break;
+            case SplitPaymentMethod.voucher:
+              voucherPaymentAmount += splitPayment.paidAmount;
+              paymentReferenceVoucher = splitPayment.paymentReference;
+              break;
+          }
+        }
+      } else {
+        // Non-split payment types
+        cashPaymentAmount = paymentType == PaymentType.cash ? paidAmount : 0.0;
+        cardPaymentAmount = paymentType == PaymentType.card ? paidAmount : 0.0;
+
+        // Set other payment type amounts and references
+        if (paymentType == PaymentType.other) {
+          if (otherPaymentMethod == OtherPaymentMethod.bankTransfer) {
+            bankPaymentAmount = paidAmount;
+            paymentReferenceBank = paymentReference;
+          } else if (otherPaymentMethod == OtherPaymentMethod.cheque) {
+            chequePaymentAmount = paidAmount;
+            paymentReferenceCheque = paymentReference;
+          } else if (otherPaymentMethod == OtherPaymentMethod.voucher) {
+            voucherPaymentAmount = paidAmount;
+            paymentReferenceVoucher = paymentReference;
+          }
+        }
+      }
+
+      final cashPayment = cashPaymentAmount.toStringAsFixed(2);
+      final cardPayment = cardPaymentAmount.toStringAsFixed(2);
+      final bankPayment = bankPaymentAmount.toStringAsFixed(2);
+      final chequePayment = chequePaymentAmount.toStringAsFixed(2);
+      final voucherPayment = voucherPaymentAmount.toStringAsFixed(2);
+
       final requestBody = {
         "activeToken": activeToken,
         "transactionId": transactionId,
@@ -975,9 +1083,15 @@ class _HomePageState extends State<HomePage> {
         "totalDiscountValue": null,
         "totalDiscountPercentage": null,
         "total": total,
-        "balance": "0.00",
-        "cardPayment": "0.00",
-        "cashPayment": total,
+        "balance": balance.toStringAsFixed(2),
+        "cardPayment": cardPayment,
+        "cashPayment": cashPayment,
+        "bankPayment": bankPayment,
+        "chequePayment": chequePayment,
+        "voucherPayment": voucherPayment,
+        "paymentReferenceBank": paymentReferenceBank,
+        "paymentReferenceCheque": paymentReferenceCheque,
+        "paymentReferenceVoucher": paymentReferenceVoucher,
         "lineItems": lineItems,
         "tableId": null,
         "tableName": null,
@@ -1107,7 +1221,7 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.all(32.0),
+                  padding: const EdgeInsets.symmetric(vertical: 32.0,horizontal: 16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -1396,7 +1510,7 @@ class _HomePageState extends State<HomePage> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Color(0xffd41818),
                               foregroundColor: Colors.white,
-                              padding: EdgeInsets.symmetric(vertical: 12),
+                              padding: EdgeInsets.symmetric(vertical: 10),
                             ),
                             child: Text('Add to Cart'),
                           ),
@@ -1408,7 +1522,7 @@ class _HomePageState extends State<HomePage> {
                       if (_cartItems.isNotEmpty) ...[
                         Text(
                           'Cart',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 8),
                         Card(
@@ -1604,14 +1718,14 @@ class _HomePageState extends State<HomePage> {
                                     Text(
                                       'Total Amount:',
                                       style: TextStyle(
-                                        fontSize: 18,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                     Text(
                                       'Rs. ${_cartItemsTotal.toStringAsFixed(2)}',
                                       style: TextStyle(
-                                        fontSize: 18,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xffd41818),
                                       ),
@@ -1630,13 +1744,13 @@ class _HomePageState extends State<HomePage> {
                         children: [
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: _printBill,
+                              onPressed: _showClearConfirmationDialog,
                               icon: Icon(Icons.print),
-                              label: Text('Print'),
+                              label: Text('Clear'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: Colors.grey[600],
                                 foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: 16),
+                                padding: EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
@@ -1645,53 +1759,55 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(width: 12),
                           Expanded(
-                            child: ElevatedButton(
-                              onPressed: _submitTransaction,
+                            child: ElevatedButton.icon(
+                              onPressed: _printBill,
+                              icon: Icon(Icons.print),
+                              label: Text('Print'),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Color(0xffd41818),
+                                backgroundColor: Colors.blue,
                                 foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: 16),
+                                padding: EdgeInsets.symmetric(vertical: 14),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              child: Text(
-                                'Submit',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          // const SizedBox(width: 12),
+                          // Expanded(
+                          //   child: ElevatedButton.icon(
+                          //     onPressed: _submitTransaction,
+                          //     icon: Icon(Icons.money),
+                          //     label: Text('submit'),
+                          //     style: ElevatedButton.styleFrom(
+                          //       backgroundColor: Colors.green,
+                          //       foregroundColor: Colors.white,
+                          //       padding: EdgeInsets.symmetric(vertical: 14),
+                          //       shape: RoundedRectangleBorder(
+                          //         borderRadius: BorderRadius.circular(8),
+                          //       ),
+                          //     ),
+                          //   ),
+                          // ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton.icon(
+                              onPressed: _showCheckoutDialog,
+                              icon: Icon(Icons.money),
+                              label: Text('Pay'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      // Clear button
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _showClearConfirmationDialog,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.grey[600],
-                            foregroundColor: Colors.white,
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: Text(
-                            'Clear',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
                       const SizedBox(height: 72),
-
-
 
                     ],
                   ),
@@ -1701,7 +1817,7 @@ class _HomePageState extends State<HomePage> {
             
             // Copyright at the bottom
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.all(8),
               child: Center(
                 child: Text(
                   '©${DateTime.now().year} JPosLite. All rights reserved.',
