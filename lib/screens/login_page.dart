@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -196,7 +197,7 @@ class _LoginPageState extends State<LoginPage> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12.0),
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 16.0),
+                              padding: const EdgeInsets.symmetric(vertical: 12.0),
                             ),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -269,7 +270,6 @@ class _LoginPageState extends State<LoginPage> {
       final dio = Dio();
 
       final url = AppConfigs.baseUrl+ApiEndpoints.authenticate;
-      print(url);
       final response = await dio.post(
         url,
         data: {"username": username, "password": password},
@@ -287,6 +287,17 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('businessName', businessName);
         await prefs.setString('customers', json.encode(customers));
         await prefs.setString('items', json.encode(items));
+
+        // Check if logo is enabled and download/store image if available
+        final configurations = jsonResponse['configurations'] as Map<String, dynamic>?;
+        if (configurations != null && configurations['logoEnabled'] == true) {
+          final imageURL = jsonResponse['imageURL'] ?? '';
+          if (imageURL.isNotEmpty) {
+            await prefs.setString('imageURL', imageURL);
+            // Download and cache the image
+            await _downloadAndCacheImage(imageURL, prefs);
+          }
+        }
 
         Navigator.pushReplacement(
           context,
@@ -308,6 +319,71 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _downloadAndCacheImage(String imageURL, SharedPreferences prefs) async {
+    try {
+      // Extract file extension from URL or default to .jpg
+      final uri = Uri.parse(imageURL);
+      final pathSegments = uri.pathSegments;
+      final fileName = pathSegments.isNotEmpty 
+          ? pathSegments.last 
+          : 'business_logo.jpg';
+      
+      // Ensure filename has an extension
+      final fileExtension = fileName.contains('.') 
+          ? fileName.substring(fileName.lastIndexOf('.'))
+          : '.jpg';
+      final finalFileName = fileName.contains('.') 
+          ? fileName 
+          : 'business_logo$fileExtension';
+
+      // Use app's internal storage directory (works on Android without path_provider)
+      // Construct path manually for Android: /data/data/<package_name>/files/images/
+      String filePath;
+      if (Platform.isAndroid) {
+        // Android internal storage path
+        const packageName = 'com.jsoft.jpos.lite';
+        final imageDir = Directory('/data/data/$packageName/files/images');
+        
+        // Create images directory if it doesn't exist
+        if (!await imageDir.exists()) {
+          await imageDir.create(recursive: true);
+        }
+        
+        filePath = '${imageDir.path}/$finalFileName';
+      } else {
+        // For other platforms, use a simple relative path
+        final imageDir = Directory('./images');
+        if (!await imageDir.exists()) {
+          await imageDir.create(recursive: true);
+        }
+        filePath = '${imageDir.path}/$finalFileName';
+      }
+
+      // Download the image directly to file using Dio's download method
+      final dio = Dio();
+      await dio.download(
+        imageURL,
+        filePath,
+        options: Options(
+          responseType: ResponseType.stream,
+        ),
+      );
+
+      // Verify file was created
+      final file = File(filePath);
+      if (await file.exists()) {
+        // Store the local file path in SharedPreferences
+        await prefs.setString('cachedImagePath', filePath);
+        print('✅ Image downloaded and saved: $filePath');
+      } else {
+        throw Exception('File was not created after download');
+      }
+    } catch (e) {
+      print('❌ Error downloading image: $e');
+      // Don't throw error - allow login to continue even if image download fails
     }
   }
 
