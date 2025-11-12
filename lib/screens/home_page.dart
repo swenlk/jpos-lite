@@ -8,6 +8,7 @@ import 'package:lite/model/cart_item.dart';
 import 'package:lite/model/customer.dart';
 import 'package:lite/model/item.dart';
 import 'package:lite/screens/login_page.dart';
+import 'package:lite/screens/transaction_page.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/snackbar_manager.dart';
 import 'package:lite/widgets/add_customer_dialog.dart';
@@ -1202,6 +1203,29 @@ class _HomePageState extends State<HomePage> {
             icon: const Icon(Icons.print),
             onPressed: _showPrintDialog,
             tooltip: 'Print',
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.settings),
+            onSelected: (value) {
+              if (value == 'transactions') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const TransactionPage()),
+                );
+              }
+            },
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'transactions',
+                child: Row(
+                  children: [
+                    Icon(Icons.receipt_long, size: 20,color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Transactions'),
+                  ],
+                ),
+              ),
+            ],
           ),
           IconButton(
             icon: const Icon(Icons.logout),
