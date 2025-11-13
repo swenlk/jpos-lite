@@ -10,6 +10,7 @@ import 'package:lite/model/item.dart';
 import 'package:lite/screens/login_page.dart';
 import 'package:lite/screens/transaction_page.dart';
 import 'package:lite/utils/app_configs.dart';
+import 'package:lite/utils/print_service.dart';
 import 'package:lite/utils/snackbar_manager.dart';
 import 'package:lite/widgets/add_customer_dialog.dart';
 import 'package:lite/widgets/clear_confirmation_dialog.dart';
@@ -724,9 +725,14 @@ class _HomePageState extends State<HomePage> {
 
       print('✅ Found printer characteristic: ${printerCharacteristic.uuid}');
 
-      // Generate print content
+      // Generate print content (without business name, as it will be handled by print service)
       String printContent = _generateBillContent();
-      List<int> printData = _convertToPrintData(printContent);
+      
+      // Generate print bytes with business name and logo using the print service
+      List<int> printData = await PrintService.generatePrintBytesWithLogo(
+        businessName: businessName ?? 'Business Name',
+        content: printContent,
+      );
 
       // Send data to printer
       await _sendDataInChunks(printerCharacteristic, printData);
@@ -747,10 +753,7 @@ class _HomePageState extends State<HomePage> {
     StringBuffer content = StringBuffer();
     int totalWidth = 32; // Total width for alignment
     
-    // Header
-    content.writeln();
-    content.writeln('${businessName ?? 'Business Name'}');
-    content.writeln();
+    // Note: Business name is now handled by PrintService, so we skip it here
 
     // Customer info
     String customerStr = _selectedCustomer!.name;
@@ -876,24 +879,50 @@ class _HomePageState extends State<HomePage> {
     BluetoothCharacteristic characteristic,
     List<int> data,
   ) async {
-    const int chunkSize = 20; // Send data in small chunks
+    // Use a safe chunk size that works with most Bluetooth thermal printers
+    // The error shows max: 237 bytes, so we use 200 bytes as a safe default
+    // This leaves room for any protocol overhead
+    int chunkSize = 200;
+
+    int totalChunks = (data.length / chunkSize).ceil();
+    int chunkNumber = 0;
 
     for (int i = 0; i < data.length; i += chunkSize) {
       int end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
       List<int> chunk = data.sublist(i, end);
+      chunkNumber++;
 
-      print('📤 Sending chunk ${i ~/ chunkSize + 1}: ${chunk.length} bytes');
+      // Log progress every 10 chunks or for the first/last chunk
+      if (chunkNumber == 1 || chunkNumber % 10 == 0 || chunkNumber == totalChunks) {
+        print('📤 Sending chunk $chunkNumber/$totalChunks: ${chunk.length} bytes');
+      }
 
       try {
         if (characteristic.properties.writeWithoutResponse) {
           await characteristic.write(chunk, withoutResponse: true);
+          // Minimal delay for writeWithoutResponse to prevent buffer overflow
+          if (i + chunkSize < data.length) {
+            await Future.delayed(const Duration(milliseconds: 3));
+          }
         } else {
           await characteristic.write(chunk);
+          // Slightly longer delay when waiting for response
+          if (i + chunkSize < data.length) {
+            await Future.delayed(const Duration(milliseconds: 10));
+          }
         }
-
-        // Small delay between chunks
-        await Future.delayed(const Duration(milliseconds: 50));
       } catch (e) {
+        // If write fails due to size, try with smaller chunks
+        if (e.toString().contains('data longer than allowed') && chunkSize > 20) {
+          print('⚠️ Chunk too large, retrying with smaller size...');
+          // Reduce chunk size and retry
+          chunkSize = (chunkSize * 0.5).round().clamp(20, 200);
+          print('🔄 Reduced chunk size to: $chunkSize bytes');
+          // Retry from current position with new chunk size
+          i -= (end - i); // Go back to start of failed chunk
+          chunkNumber--; // Decrement to retry this chunk
+          continue;
+        }
         print('❌ ERROR: Failed to send chunk: $e');
         throw Exception('Failed to send data chunk: $e');
       }
