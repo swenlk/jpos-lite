@@ -1,15 +1,52 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lite/model/transaction.dart';
+import 'package:lite/widgets/checkout_dialog.dart';
+import 'package:lite/utils/app_configs.dart';
+import 'package:lite/utils/snackbar_manager.dart';
+import 'package:lite/api/endpoints.dart';
 
-class TransactionDetailsDialog extends StatelessWidget {
+class TransactionDetailsDialog extends StatefulWidget {
   final Transaction transaction;
   final String Function(String) formatOrderDate;
+  final VoidCallback? onPaymentComplete;
 
   const TransactionDetailsDialog({
     super.key,
     required this.transaction,
     required this.formatOrderDate,
+    this.onPaymentComplete,
   });
+
+  @override
+  State<TransactionDetailsDialog> createState() => _TransactionDetailsDialogState();
+
+  static void show({
+    required BuildContext context,
+    required Transaction transaction,
+    required String Function(String) formatOrderDate,
+    VoidCallback? onPaymentComplete,
+  }) {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return TransactionDetailsDialog(
+          transaction: transaction,
+          formatOrderDate: formatOrderDate,
+          onPaymentComplete: onPaymentComplete,
+        );
+      },
+    );
+  }
+}
+
+class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
+  bool _isLoading = false;
+
+  Transaction get transaction => widget.transaction;
+  String Function(String) get formatOrderDate => widget.formatOrderDate;
 
   bool _shouldDisplayValue(dynamic value) {
     if (value == null) return false;
@@ -38,6 +75,215 @@ class TransactionDetailsDialog extends StatelessWidget {
       if (word.isEmpty) return word;
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
     }).join(' ');
+  }
+
+  String? _getBalance(Transaction transaction) {
+    // Handle balance: only show if negative, and convert to positive
+    if (transaction.balance.isNotEmpty && transaction.balance != '0.00') {
+      try {
+        final balanceValue = double.parse(transaction.balance);
+        if (balanceValue < 0) {
+          // Convert negative to positive
+          final positiveBalance = balanceValue.abs();
+          return positiveBalance.toStringAsFixed(2);
+        }
+        // If balance is positive, don't show it
+      } catch (e) {
+        // If parsing fails, skip balance
+        print('Error parsing balance: $e');
+      }
+    }
+    return null;
+  }
+
+  Future<void> _completePartialTransaction({
+    required double paidAmount,
+    required double balance,
+    required PaymentType paymentType,
+    OtherPaymentMethod? otherPaymentMethod,
+    String? paymentReference,
+    List<SplitPaymentData>? splitPayments,
+  }) async {
+    // Get active token
+    final prefs = await SharedPreferences.getInstance();
+    final activeToken = prefs.getString('activeToken');
+
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      // Set payment amounts based on payment type
+      double cashPaymentAmount = 0.0;
+      double cardPaymentAmount = 0.0;
+      double bankPaymentAmount = 0.0;
+      double chequePaymentAmount = 0.0;
+      double voucherPaymentAmount = 0.0;
+      String? paymentReferenceBank;
+      String? paymentReferenceCheque;
+      String? paymentReferenceVoucher;
+
+      if (paymentType == PaymentType.split && splitPayments != null) {
+        // Calculate split payment amounts
+        for (var splitPayment in splitPayments) {
+          switch (splitPayment.paymentMethod) {
+            case SplitPaymentMethod.cash:
+              cashPaymentAmount += splitPayment.paidAmount;
+              break;
+            case SplitPaymentMethod.card:
+              cardPaymentAmount += splitPayment.paidAmount;
+              break;
+            case SplitPaymentMethod.bankTransfer:
+              bankPaymentAmount += splitPayment.paidAmount;
+              paymentReferenceBank = splitPayment.paymentReference;
+              break;
+            case SplitPaymentMethod.cheque:
+              chequePaymentAmount += splitPayment.paidAmount;
+              paymentReferenceCheque = splitPayment.paymentReference;
+              break;
+            case SplitPaymentMethod.voucher:
+              voucherPaymentAmount += splitPayment.paidAmount;
+              paymentReferenceVoucher = splitPayment.paymentReference;
+              break;
+          }
+        }
+      } else {
+        // Non-split payment types
+        cashPaymentAmount = paymentType == PaymentType.cash ? paidAmount : 0.0;
+        cardPaymentAmount = paymentType == PaymentType.card ? paidAmount : 0.0;
+
+        // Set other payment type amounts and references
+        if (paymentType == PaymentType.other) {
+          if (otherPaymentMethod == OtherPaymentMethod.bankTransfer) {
+            bankPaymentAmount = paidAmount;
+            paymentReferenceBank = paymentReference;
+          } else if (otherPaymentMethod == OtherPaymentMethod.cheque) {
+            chequePaymentAmount = paidAmount;
+            paymentReferenceCheque = paymentReference;
+          } else if (otherPaymentMethod == OtherPaymentMethod.voucher) {
+            voucherPaymentAmount = paidAmount;
+            paymentReferenceVoucher = paymentReference;
+          }
+        }
+      }
+
+      final requestBody = {
+        "activeToken": activeToken,
+        "id": transaction.id,
+        "balance": balance.toStringAsFixed(2),
+        "cardPayment": cardPaymentAmount > 0 ? cardPaymentAmount.toStringAsFixed(2) : "0.0",
+        "cashPayment": cashPaymentAmount > 0 ? cashPaymentAmount.toStringAsFixed(2) : "0.0",
+        "bankPayment": bankPaymentAmount > 0 ? bankPaymentAmount.toStringAsFixed(2) : "0.0",
+        "chequePayment": chequePaymentAmount > 0 ? chequePaymentAmount.toStringAsFixed(2) : "0.0",
+        "voucherPayment": voucherPaymentAmount > 0 ? voucherPaymentAmount.toStringAsFixed(2) : "0.0",
+        "paymentReferenceBank": paymentReferenceBank?.isNotEmpty == true ? paymentReferenceBank : null,
+        "paymentReferenceCheque": paymentReferenceCheque?.isNotEmpty == true ? paymentReferenceCheque : null,
+        "paymentReferenceVoucher": paymentReferenceVoucher?.isNotEmpty == true ? paymentReferenceVoucher : null,
+      };
+
+      print('📤 Calling complete_partial_transaction API');
+      print('Request body: $requestBody');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.completePartialTransaction,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Complete partial transaction response: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (mounted) {
+          SnackbarManager.showSuccess(
+            context,
+            message: 'Payment completed successfully!',
+          );
+
+          // Close the transaction dialog
+          Navigator.of(context).pop();
+          
+          // Call the callback to refresh the transaction list
+          if (widget.onPaymentComplete != null) {
+            widget.onPaymentComplete!();
+          }
+        }
+      } else {
+        final errorMessage =
+            jsonResponse?['status_description'] ??
+                jsonResponse?['message'] ??
+                'Server returned status ${response.statusCode}';
+        throw Exception(errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during partial transaction: $e');
+      String errorMessage = 'Error completing payment';
+
+      if (e.response != null) {
+        print('Response status: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+
+        if (e.response?.statusCode == 403) {
+          errorMessage =
+              'Access denied. Please check your permissions or try logging in again.';
+        } else if (e.response?.statusCode == 401) {
+          errorMessage = 'Unauthorized. Please login again.';
+        } else {
+          final responseData = e.response?.data;
+          errorMessage = responseData?['status_description'] ??
+              responseData?['message'] ??
+              'Error completing payment';
+        }
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please check your internet connection.';
+      } else if (e.type == DioExceptionType.connectionError) {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+
+      if (mounted) {
+        SnackbarManager.showError(
+          context,
+          message: errorMessage,
+        );
+      }
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      if (mounted) {
+        SnackbarManager.showError(
+          context,
+          message: 'An unexpected error occurred: ${e.toString()}',
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -313,6 +559,69 @@ class TransactionDetailsDialog extends StatelessWidget {
                                 ),
                               ],
                             ),
+                            // Only show Pay button if balance is negative
+                            if (_getBalance(transaction) != null) ...[
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : () {
+                                    final positiveBalance = _getBalance(transaction);
+                                    if (positiveBalance != null) {
+                                      final balanceAmount = double.tryParse(positiveBalance) ?? 0.0;
+                                      if (balanceAmount > 0) {
+                                        showDialog(
+                                          context: context,
+                                          barrierDismissible: true,
+                                          builder: (BuildContext context) {
+                                            return CheckoutDialog(
+                                              totalAmount: balanceAmount,
+                                              onComplete: (paidAmount, balance, paymentType, otherPaymentMethod, paymentReference, splitPayments) {
+                                                // Close checkout dialog first
+                                                Navigator.of(context).pop();
+                                                // Then call the API to complete the partial transaction
+                                                _completePartialTransaction(
+                                                  paidAmount: paidAmount,
+                                                  balance: balance,
+                                                  paymentType: paymentType,
+                                                  otherPaymentMethod: otherPaymentMethod,
+                                                  paymentReference: paymentReference,
+                                                  splitPayments: splitPayments,
+                                                );
+                                              },
+                                            );
+                                          },
+                                        );
+                                      }
+                                    }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Pay',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                ),
+                              ),
+                            ],
                           ],
                         ],
                       ),
@@ -637,23 +946,6 @@ class TransactionDetailsDialog extends StatelessWidget {
           color: isDiscount ? Colors.orange.shade700 : Colors.blue.shade700,
         ),
       ),
-    );
-  }
-
-  static void show({
-    required BuildContext context,
-    required Transaction transaction,
-    required String Function(String) formatOrderDate,
-  }) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (BuildContext context) {
-        return TransactionDetailsDialog(
-          transaction: transaction,
-          formatOrderDate: formatOrderDate,
-        );
-      },
     );
   }
 }

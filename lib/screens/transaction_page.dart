@@ -492,6 +492,7 @@ class _TransactionPageState extends State<TransactionPage> {
                                   context: context,
                                   transaction: transaction,
                                   formatOrderDate: _formatOrderDate,
+                                  onPaymentComplete: _onSearch,
                                 );
                               },
                               child: Card(
