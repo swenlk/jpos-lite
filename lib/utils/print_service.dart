@@ -6,6 +6,101 @@ import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PrintService {
+  /// Convert grayscale image to pure black and white using improved threshold
+  /// Uses adaptive thresholding and better contrast to preserve all image details
+  static img.Image _applyThreshold(img.Image image, {int threshold = 128}) {
+    final result = img.Image(width: image.width, height: image.height);
+    
+    // First pass: calculate statistics for adaptive thresholding
+    int totalBrightness = 0;
+    int minBrightness = 255;
+    int maxBrightness = 0;
+    int pixelCount = 0;
+    
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final grayValue = pixel.r.toInt();
+        totalBrightness += grayValue;
+        if (grayValue < minBrightness) minBrightness = grayValue;
+        if (grayValue > maxBrightness) maxBrightness = grayValue;
+        pixelCount++;
+      }
+    }
+    
+    // Calculate adaptive threshold based on image statistics
+    final avgBrightness = pixelCount > 0 ? totalBrightness ~/ pixelCount : 128;
+    final brightnessRange = maxBrightness - minBrightness;
+    
+    // Use Otsu's method inspired threshold: balance between preserving details
+    // Lower threshold for dark images, higher for light images
+    // But also consider the range - if range is small, use middle value
+    int adaptiveThreshold;
+    if (brightnessRange < 50) {
+      // Low contrast image - use average
+      adaptiveThreshold = avgBrightness;
+    } else {
+      // Use weighted average: 40% base threshold, 60% image average
+      adaptiveThreshold = ((threshold * 0.4) + (avgBrightness * 0.6)).round();
+    }
+    
+    // Clamp threshold to reasonable range, but allow lower values to capture more details
+    // Lower minimum to capture very light colors like light green
+    adaptiveThreshold = adaptiveThreshold.clamp(85, 160);
+    
+    // Second pass: apply threshold with better handling of edge cases
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        final grayValue = pixel.r.toInt();
+        
+        // Use a much more aggressive lower threshold to capture light colors
+        // Light green and other light colors need lower threshold to be visible
+        // Reduce by 20-25 to ensure light colors are captured
+        final effectiveThreshold = adaptiveThreshold - 20; // Very aggressive bias toward black
+        
+        // Special handling for light colors (200-255 range)
+        // These are often light greens, yellows, etc. that should still print
+        int value;
+        if (grayValue < effectiveThreshold) {
+          // Definitely black
+          value = 0;
+        } else if (grayValue >= 240) {
+          // Very light (almost white) - keep as white
+          value = 255;
+        } else {
+          // Medium-light colors (like light green) - make them black to ensure visibility
+          // Use a wider range to capture light colors
+          value = grayValue < (effectiveThreshold + 30) ? 0 : 255;
+        }
+        
+        result.setPixel(x, y, img.ColorRgb8(value, value, value));
+      }
+    }
+    
+    return result;
+  }
+  
+  /// Remove alpha channel by copying to RGB format
+  static img.Image _removeAlphaChannel(img.Image image) {
+    // Create a new RGB image (no alpha channel)
+    final rgbImage = img.Image(width: image.width, height: image.height);
+    
+    // Copy pixels, ignoring alpha channel
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        final pixel = image.getPixel(x, y);
+        // Convert num to int explicitly
+        rgbImage.setPixel(x, y, img.ColorRgb8(
+          pixel.r.toInt(), 
+          pixel.g.toInt(), 
+          pixel.b.toInt()
+        ));
+      }
+    }
+    
+    return rgbImage;
+  }
   /// Generate print bytes with business name and optional logo
   /// 
   /// [businessName] - The business name to print
@@ -56,12 +151,29 @@ class PrintService {
                 print('🔄 Image resized to ${image.width}x${image.height}');
               }
               
-              // Convert to grayscale to reduce data size
+              // Remove alpha channel if present (convert RGBA to RGB)
+              if (image.hasAlpha) {
+                image = _removeAlphaChannel(image);
+                print('🔄 Removed alpha channel');
+              }
+              
+              // Enhance contrast and brightness before grayscale conversion
+              // Higher contrast helps ensure all parts are visible, including light colors
+              // Slight brightness reduction helps light colors become more visible
+              image = img.adjustColor(image, contrast: 1.4, brightness: 0.95);
+              
+              // Convert to grayscale
               image = img.grayscale(image);
+              
+              // Apply improved threshold to convert to pure black and white (binary)
+              // This ensures all parts print correctly on thermal printers
+              // Uses adaptive thresholding based on image brightness
+              image = _applyThreshold(image, threshold: 128);
+              
+              print('✅ Logo optimized and converted to black/white (${image.width}x${image.height})');
               
               // Print logo first (no extra space after)
               printBytes += generator.image(image);
-              print('✅ Logo optimized and added to print data (${image.width}x${image.height})');
             } else {
               print('⚠️ Failed to decode image from file: $logoPath');
             }
@@ -176,8 +288,26 @@ class PrintService {
         print('🔄 Image resized to ${image.width}x${image.height}');
       }
       
-      // Convert to grayscale to reduce data size
+      // Remove alpha channel if present (convert RGBA to RGB)
+      if (image.hasAlpha) {
+        image = _removeAlphaChannel(image);
+        print('🔄 Removed alpha channel');
+      }
+      
+      // Enhance contrast and brightness before grayscale conversion
+      // Higher contrast helps ensure all parts are visible, including light colors
+      // Slight brightness reduction helps light colors become more visible
+      image = img.adjustColor(image, contrast: 1.4, brightness: 0.95);
+      
+      // Convert to grayscale
       image = img.grayscale(image);
+      
+      // Apply improved threshold to convert to pure black and white (binary)
+      // This ensures all parts print correctly on thermal printers
+      // Uses adaptive thresholding based on image brightness
+      image = _applyThreshold(image, threshold: 128);
+      
+      print('✅ Image optimized and converted to black/white (${image.width}x${image.height})');
       
       // Initialize the ESC/POS Generator
       final profile = await CapabilityProfile.load();
