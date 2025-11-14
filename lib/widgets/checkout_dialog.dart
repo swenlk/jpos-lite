@@ -327,7 +327,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
       elevation: 8.0,
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
-        padding: const EdgeInsets.all(24.0),
+        padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16.0),
@@ -348,7 +348,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 16.0),
 
               // Order Summary Section
               const Text(
@@ -359,7 +359,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 8.0),
+              const SizedBox(height: 4.0),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -380,7 +380,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 8.0),
 
               // Payment Type Section
               const Text(
@@ -391,7 +391,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   color: Colors.black87,
                 ),
               ),
-              const SizedBox(height: 12.0),
+              const SizedBox(height: 4.0),
               Row(
                 children: [
                   _buildPaymentTypeButton(
@@ -416,7 +416,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 8.0),
               // Paid Amount Section
               if (_selectedPaymentType == PaymentType.split) ...[
                 // Paid Amount Details for Split payment type
@@ -428,7 +428,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(height: 12.0),
+                const SizedBox(height: 4.0),
                 ..._splitPaymentEntries.asMap().entries.map((entry) {
                   final index = entry.key;
                   final splitEntry = entry.value;
@@ -437,72 +437,75 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Payment method dropdown
+                        // Payment method dropdown on the left
                         Expanded(
                           flex: 1,
                           child: _buildSplitPaymentMethodDropdown(splitEntry, index),
                         ),
                         const SizedBox(width: 8.0),
-                        // Paid amount field
+                        // Paid amount and payment reference fields on the right
                         Expanded(
                           flex: 1,
-                          child: TextField(
-                            controller: splitEntry.paidAmountController,
-                            style: const TextStyle(fontSize: 16.0),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                            decoration: InputDecoration(
-                              hintText: 'Paid amount',
-                              hintStyle: const TextStyle(fontSize: 14.0),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Paid amount field
+                              TextField(
+                                controller: splitEntry.paidAmountController,
+                                style: const TextStyle(fontSize: 16.0),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: InputDecoration(
+                                  hintText: 'Paid amount',
+                                  hintStyle: const TextStyle(fontSize: 14.0),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12.0,
+                                    vertical: 12.0,
+                                  ),
+                                ),
                               ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12.0,
-                                vertical: 12.0,
+                              const SizedBox(height: 8.0),
+                              // Payment reference field below paid amount
+                              TextField(
+                                controller: splitEntry.paymentReferenceController,
+                                enabled: splitEntry.paymentMethod != SplitPaymentMethod.cash &&
+                                    splitEntry.paymentMethod != SplitPaymentMethod.card,
+                                style: TextStyle(
+                                  fontSize: 16.0,
+                                  color: splitEntry.paymentMethod == SplitPaymentMethod.cash ||
+                                          splitEntry.paymentMethod == SplitPaymentMethod.card
+                                      ? Colors.grey[400]
+                                      : Colors.black87,
+                                ),
+                                decoration: InputDecoration(
+                                  hintText: 'Payment reference',
+                                  hintStyle: TextStyle(
+                                    fontSize: 12.0,
+                                    color: splitEntry.paymentMethod == SplitPaymentMethod.cash ||
+                                            splitEntry.paymentMethod == SplitPaymentMethod.card
+                                        ? Colors.grey[400]
+                                        : Colors.black87,
+                                  ),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.grey[600]!),
+                                  ),
+                                  disabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    borderSide: BorderSide(color: Colors.grey[300]!),
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12.0,
+                                    vertical: 12.0,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8.0),
-                        // Payment reference field
-                        Expanded(
-                          flex: 1,
-                          child: TextField(
-                            controller: splitEntry.paymentReferenceController,
-                            enabled: splitEntry.paymentMethod != SplitPaymentMethod.cash &&
-                                splitEntry.paymentMethod != SplitPaymentMethod.card,
-                            style: TextStyle(
-                              fontSize: 16.0,
-                              color: splitEntry.paymentMethod == SplitPaymentMethod.cash ||
-                                      splitEntry.paymentMethod == SplitPaymentMethod.card
-                                  ? Colors.grey[400]
-                                  : Colors.black87,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: 'Payment reference',
-                              hintStyle: TextStyle(
-                                fontSize: 12.0,
-                                color: splitEntry.paymentMethod == SplitPaymentMethod.cash ||
-                                        splitEntry.paymentMethod == SplitPaymentMethod.card
-                                    ? Colors.grey[400]
-                                    : Colors.black87,
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8.0),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8.0),
-                                borderSide: BorderSide(color: Colors.grey[600]!),
-                              ),
-                              disabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8.0),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
-                              ),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 12.0,
-                                vertical: 12.0,
-                              ),
-                            ),
+                            ],
                           ),
                         ),
                       ],
@@ -519,22 +522,23 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(height: 12.0),
+                const SizedBox(height: 4.0),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Dropdown for payment method
+                    // Dropdown for payment method on the left
                     Expanded(
                       flex: 1,
                       child: _buildOtherPaymentMethodDropdown(),
                     ),
                     const SizedBox(width: 8.0),
-                    // Payment Amount and Reference fields
+                    // Paid amount and payment reference fields on the right
                     Expanded(
                       flex: 1,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          // Paid amount field
                           TextField(
                             controller: _paidAmountController,
                             style: const TextStyle(
@@ -553,44 +557,8 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                               ),
                             ),
                           ),
-                          // const SizedBox(height: 12.0),
-                          // TextField(
-                          //   controller: _paymentReferenceController,
-                          //   decoration: InputDecoration(
-                          //     hintText: 'Payment reference',
-                          //     border: OutlineInputBorder(
-                          //       borderRadius: BorderRadius.circular(8.0),
-                          //     ),
-                          //     contentPadding: const EdgeInsets.symmetric(
-                          //       horizontal: 12.0,
-                          //       vertical: 12.0,
-                          //     ),
-                          //   ),
-                          // ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8.0),
-                    Expanded(
-                      flex: 1,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // TextField(
-                          //   controller: _paidAmountController,
-                          //   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          //   decoration: InputDecoration(
-                          //     hintText: 'Paid amount',
-                          //     border: OutlineInputBorder(
-                          //       borderRadius: BorderRadius.circular(8.0),
-                          //     ),
-                          //     contentPadding: const EdgeInsets.symmetric(
-                          //       horizontal: 12.0,
-                          //       vertical: 12.0,
-                          //     ),
-                          //   ),
-                          // ),
-                          // const SizedBox(height: 12.0),
+                          const SizedBox(height: 8.0),
+                          // Payment reference field below paid amount
                           TextField(
                             controller: _paymentReferenceController,
                             style: const TextStyle(
@@ -634,7 +602,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                     color: Colors.black87,
                   ),
                 ),
-                const SizedBox(height: 8.0),
+                const SizedBox(height: 4.0),
                 TextField(
                   controller: _paidAmountController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -670,7 +638,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                         .map((amount) => _buildSuggestedAmountButton(amount))
                         .toList(),
                   ),
-                  const SizedBox(height: 12.0),
+                  // const SizedBox(height: 8.0),
                 ],
               ],
               // const SizedBox(height: 24.0),
@@ -697,7 +665,7 @@ class _CheckoutDialogState extends State<CheckoutDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 24.0),
+              const SizedBox(height: 8.0),
 
               // Balance Section
               Row(

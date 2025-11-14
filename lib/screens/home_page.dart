@@ -1394,8 +1394,11 @@ class _HomePageState extends State<HomePage> {
                                     hintText: _items.isEmpty
                                         ? 'No items available'
                                         : 'Select an item',
+                                    // hintStyle: TextStyle(
+                                    //   fontSize: 14.0,
+                                    // ),
                                     border: OutlineInputBorder(),
-                                    prefixIcon: Icon(Icons.inventory_2),
+                                    // prefixIcon: Icon(Icons.inventory_2),
                                   ),
                                 ),
                                 popupProps: PopupProps.menu(

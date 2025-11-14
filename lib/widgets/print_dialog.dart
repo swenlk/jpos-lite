@@ -647,13 +647,13 @@ class _PrintDialogState extends State<PrintDialog> {
                             subtitle: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  device.remoteId.toString(),
-                                  style: TextStyle(
-                                    color: Colors.grey[600],
-                                    fontSize: 12,
-                                  ),
-                                ),
+                                // Text(
+                                //   device.remoteId.toString(),
+                                //   style: TextStyle(
+                                //     color: Colors.grey[600],
+                                //     fontSize: 12,
+                                //   ),
+                                // ),
                                 if (_connectedDevice?.remoteId == device.remoteId)
                                   Text(
                                     'Connected',

@@ -343,7 +343,7 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                       ),
                       const SizedBox(width: 12),
                       const Text(
-                        'Transaction Details',
+                        'Transaction',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 20,
@@ -365,7 +365,7 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
             // Content
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -640,7 +640,7 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                       icon: Icons.list,
                       child: transaction.lineItems.isEmpty
                           ? const Padding(
-                              padding: EdgeInsets.all(16.0),
+                              padding: EdgeInsets.all(16),
                               child: Center(
                                 child: Text(
                                   'No items found',
@@ -708,7 +708,7 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
             Divider(height: 1, color: Colors.grey[300]),
           ],
           Padding(
-            padding: EdgeInsets.symmetric(vertical: 8,horizontal: 16),
+            padding: EdgeInsets.symmetric(vertical: 8,horizontal: 8),
             child: child,
           ),
         ],
@@ -903,31 +903,29 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
               if (_shouldDisplayValue(item.count))
                 _buildItemChip('Qty: ${item.count}'),
-              if (_shouldDisplayValue(item.salesPrice)) ...[
-                const SizedBox(width: 8),
+              if (_shouldDisplayValue(item.salesPrice))
                 _buildItemChip('Price: Rs. ${item.salesPrice}'),
-              ],
-              if (item.batchNumber != null && item.batchNumber!.isNotEmpty) ...[
-                const SizedBox(width: 8),
+              if (item.batchNumber != null && item.batchNumber!.isNotEmpty)
                 _buildItemChip('Batch: ${item.batchNumber}'),
-              ],
             ],
           ),
           if (_shouldDisplayValue(item.discount) ||
               _shouldDisplayValue(item.discountPercentage)) ...[
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 if (_shouldDisplayValue(item.discount))
                   _buildItemChip('Discount: Rs. ${item.discount}', isDiscount: true),
-                if (_shouldDisplayValue(item.discountPercentage)) ...[
-                  const SizedBox(width: 8),
+                if (_shouldDisplayValue(item.discountPercentage))
                   _buildItemChip('${item.discountPercentage}%', isDiscount: true),
-                ],
               ],
             ),
           ],
