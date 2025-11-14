@@ -7,6 +7,7 @@ class ApiEndpoints {
   static String addInfo = '/add_info';
   static String completeTransaction = '/complete_transaction';
   static String getTransactions = '/get_transactions';
+  static String getPendingTransactions = '/get_pending_transactions';
   static String completePartialTransaction = '/complete_partial_transaction';
 
 }

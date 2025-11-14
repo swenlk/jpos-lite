@@ -9,6 +9,7 @@ import 'package:lite/model/customer.dart';
 import 'package:lite/model/item.dart';
 import 'package:lite/screens/login_page.dart';
 import 'package:lite/screens/transaction_page.dart';
+import 'package:lite/screens/pending_transaction_page.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/print_service.dart';
 import 'package:lite/utils/snackbar_manager.dart';
@@ -1241,6 +1242,11 @@ class _HomePageState extends State<HomePage> {
                   context,
                   MaterialPageRoute(builder: (context) => const TransactionPage()),
                 );
+              } else if (value == 'pending_payment') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const PendingTransactionPage()),
+                );
               }
             },
             itemBuilder: (BuildContext context) => [
@@ -1251,6 +1257,16 @@ class _HomePageState extends State<HomePage> {
                     Icon(Icons.receipt_long, size: 20,color: Colors.red),
                     SizedBox(width: 8),
                     Text('Transactions'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'pending_payment',
+                child: Row(
+                  children: [
+                    Icon(Icons.payments_outlined, size: 20, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('Pending Payments'),
                   ],
                 ),
               ),

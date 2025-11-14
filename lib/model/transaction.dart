@@ -52,34 +52,43 @@ class Transaction {
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
+    // Helper function to convert value to string
+    String _toString(dynamic value, String defaultValue) {
+      if (value == null) return defaultValue;
+      if (value is String) return value;
+      if (value is int) return value.toString();
+      if (value is double) return value.toStringAsFixed(2);
+      return value.toString();
+    }
+
     return Transaction(
-      id: json['_id'] ?? '',
-      balance: json['balance'] ?? '0.00',
-      bankPayment: json['bankPayment'] ?? '0.00',
-      cardPayment: json['cardPayment'] ?? '0.00',
-      cashPayment: json['cashPayment'] ?? '0.00',
-      chequePayment: json['chequePayment'] ?? '0.00',
-      contactNumber: json['contactNumber'] ?? '',
-      createdDate: json['createdDate'] ?? '',
-      customerId: json['customerId'] ?? '',
-      customerName: json['customerName'] ?? '',
-      discount: json['discount'] ?? '0.00',
+      id: _toString(json['_id'], ''),
+      balance: _toString(json['balance'], '0.00'),
+      bankPayment: _toString(json['bankPayment'], '0.00'),
+      cardPayment: _toString(json['cardPayment'], '0.00'),
+      cashPayment: _toString(json['cashPayment'], '0.00'),
+      chequePayment: _toString(json['chequePayment'], '0.00'),
+      contactNumber: _toString(json['contactNumber'], ''),
+      createdDate: _toString(json['createdDate'], ''),
+      customerId: _toString(json['customerId'], ''),
+      customerName: _toString(json['customerName'], ''),
+      discount: _toString(json['discount'], '0.00'),
       info: json['info'],
       lineItems: (json['lineItems'] as List<dynamic>?)
               ?.map((item) => LineItem.fromJson(item))
               .toList() ??
           [],
       note: json['note'],
-      orderDate: json['orderDate'] ?? '',
-      paymentReferenceBank: json['paymentReferenceBank'],
-      paymentReferenceCheque: json['paymentReferenceCheque'],
-      paymentReferenceVoucher: json['paymentReferenceVoucher'],
-      status: json['status'] ?? '',
-      subTotal: json['subTotal'] ?? '0.00',
-      total: json['total'] ?? '0.00',
-      transactionId: json['transactionId'] ?? '',
-      voucherPayment: json['voucherPayment'] ?? '0.00',
-      vatAmount: json['vatAmount'],
+      orderDate: _toString(json['orderDate'], ''),
+      paymentReferenceBank: json['paymentReferenceBank']?.toString(),
+      paymentReferenceCheque: json['paymentReferenceCheque']?.toString(),
+      paymentReferenceVoucher: json['paymentReferenceVoucher']?.toString(),
+      status: _toString(json['status'], ''),
+      subTotal: _toString(json['subTotal'], '0.00'),
+      total: _toString(json['total'], '0.00'),
+      transactionId: _toString(json['transactionId'], ''),
+      voucherPayment: _toString(json['voucherPayment'], '0.00'),
+      vatAmount: json['vatAmount']?.toString(),
     );
   }
 
@@ -147,21 +156,30 @@ class LineItem {
   });
 
   factory LineItem.fromJson(Map<String, dynamic> json) {
+    // Helper function to convert value to string
+    String _toString(dynamic value, String defaultValue) {
+      if (value == null) return defaultValue;
+      if (value is String) return value;
+      if (value is int) return value.toString();
+      if (value is double) return value.toStringAsFixed(2);
+      return value.toString();
+    }
+
     return LineItem(
-      batchNumber: json['batchNumber'],
-      categoryName: json['categoryName'] ?? '',
-      count: json['count'] ?? '0',
-      discount: json['discount'] ?? '0.00',
-      discountPercentage: json['discountPercentage'] ?? '0.00',
-      inventoryId: json['inventoryId'],
-      itemCode: json['itemCode'] ?? '',
-      itemId: json['itemId'] ?? '',
-      itemName: json['itemName'] ?? '',
-      lineTotal: json['lineTotal'] ?? '0.00',
-      purchasePrice: json['purchasePrice'] ?? '0.00',
-      salesPrice: json['salesPrice'] ?? '0.00',
-      staffId: json['staffId'],
-      staffName: json['staffName'],
+      batchNumber: json['batchNumber']?.toString(),
+      categoryName: _toString(json['categoryName'], ''),
+      count: _toString(json['count'], '0'),
+      discount: _toString(json['discount'], '0.00'),
+      discountPercentage: _toString(json['discountPercentage'], '0.00'),
+      inventoryId: json['inventoryId']?.toString(),
+      itemCode: _toString(json['itemCode'], ''),
+      itemId: _toString(json['itemId'], ''),
+      itemName: _toString(json['itemName'], ''),
+      lineTotal: _toString(json['lineTotal'], '0.00'),
+      purchasePrice: _toString(json['purchasePrice'], '0.00'),
+      salesPrice: _toString(json['salesPrice'], '0.00'),
+      staffId: json['staffId']?.toString(),
+      staffName: json['staffName']?.toString(),
     );
   }
 

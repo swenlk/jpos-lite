@@ -217,18 +217,24 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (mounted) {
+          // Store callback before closing dialog
+          final callback = widget.onPaymentComplete;
+          
+          // Show success message before closing dialog
           SnackbarManager.showSuccess(
             context,
             message: 'Payment completed successfully!',
           );
-
+          
           // Close the transaction dialog
           Navigator.of(context).pop();
           
-          // Call the callback to refresh the transaction list
-          if (widget.onPaymentComplete != null) {
-            widget.onPaymentComplete!();
-          }
+          // Call the callback to refresh the transaction list after dialog is closed
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (callback != null) {
+              callback();
+            }
+          });
         }
       } else {
         final errorMessage =
@@ -577,9 +583,8 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                                             return CheckoutDialog(
                                               totalAmount: balanceAmount,
                                               onComplete: (paidAmount, balance, paymentType, otherPaymentMethod, paymentReference, splitPayments) {
-                                                // Close checkout dialog first
-                                                Navigator.of(context).pop();
-                                                // Then call the API to complete the partial transaction
+                                                // Note: CheckoutDialog already closes itself before calling onComplete
+                                                // So we don't need to pop here - just call the API
                                                 _completePartialTransaction(
                                                   paidAmount: paidAmount,
                                                   balance: balance,
