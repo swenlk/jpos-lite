@@ -31,6 +31,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? activeToken;
   String? businessName;
+  bool _fingerprintEnabled = false;
+  String? _fingerprintDeviceIp;
 
   List<Customer> _customers = [];
   Customer? _selectedCustomer;
@@ -47,11 +49,16 @@ class _HomePageState extends State<HomePage> {
   // Cart data
   List<CartItem> _cartItems = [];
 
+  // OTP verification
+  String? _receivedOtp;
+  late TextEditingController _otpController;
+
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
     _quantityController = TextEditingController(text: '$_selectedQuantity');
+    _otpController = TextEditingController();
     loadUserData();
     _loadCustomersFromSharedPreferences();
     _loadItemsFromSharedPreferences();
@@ -60,6 +67,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _quantityController.dispose();
+    _otpController.dispose();
     // Clean up any resources or cancel ongoing operations here
     super.dispose();
   }
@@ -73,7 +81,10 @@ class _HomePageState extends State<HomePage> {
         activeToken = storedToken;
         businessName =
             prefs.getString('businessName') ?? 'No Business Name found';
+        _fingerprintEnabled = prefs.getBool('fingerprint') ?? false;
+        _fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
       });
+      print(storedToken);
     } else {
       Navigator.pushReplacement(
         context,
@@ -86,7 +97,6 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('activeToken');
     await prefs.remove('businessName');
-    await prefs.remove('customers');
     await prefs.remove('customers');
     Navigator.pushReplacement(
       context,
@@ -123,10 +133,22 @@ class _HomePageState extends State<HomePage> {
   void _onCustomerSelected(Customer? customer) {
     setState(() {
       _selectedCustomer = customer;
+      _receivedOtp = null; // Reset OTP when customer changes
+      _otpController.clear();
+      print(customer?.id);
     });
   }
 
   Future<void> _showAddCustomerDialog() async {
+    // Check if fingerprint is enabled but IP address is not configured
+    if (_fingerprintEnabled && (_fingerprintDeviceIp == null || _fingerprintDeviceIp!.isEmpty)) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please enter the fingerprint IP address in Settings → Fingerprint Device.',
+      );
+      return;
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -136,6 +158,7 @@ class _HomePageState extends State<HomePage> {
             // Refresh the customers list after adding a new customer
             _syncData();
           },
+          fingerprintEnabled: _fingerprintEnabled,
         );
       },
     );
@@ -216,6 +239,16 @@ class _HomePageState extends State<HomePage> {
           // Update local items data
           setState(() {
             _items = items.map((item) => Item.fromJson(item)).toList();
+          });
+        }
+
+        // Update fingerprint value from configurations if present
+        final configurations = jsonResponse['configurations'] as Map<String, dynamic>?;
+        if (configurations != null && configurations['fingerprint'] != null) {
+          final fingerprintValue = configurations['fingerprint'] == true;
+          await prefs.setBool('fingerprint', fingerprintValue);
+          setState(() {
+            _fingerprintEnabled = fingerprintValue;
           });
         }
 
@@ -575,6 +608,399 @@ class _HomePageState extends State<HomePage> {
     final formatted = "${now.year % 100}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}"
         "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}";
     return formatted; // Format: yyMMddHHmmss
+  }
+
+  Future<void> _resendOtp() async {
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer first.',
+      );
+      return;
+    }
+
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      print('📡 Calling resend_otp API with customerId: ${_selectedCustomer!.id}');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.resendOtp,
+        data: {
+          'activeToken': activeToken,
+          'customerId': _selectedCustomer!.id,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Resend OTP response received: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (jsonResponse['status_code'] == 'S1000') {
+          // Store the received OTP and show OTP field
+          final receivedOtp = jsonResponse['otp']?.toString();
+          setState(() {
+            _receivedOtp = receivedOtp;
+            _otpController.clear();
+          });
+          SnackbarManager.showSuccess(
+            context,
+            message: jsonResponse['status_description'] ?? 'OTP sent successfully!',
+          );
+        } else {
+          final errorMessage = jsonResponse['status_description'] ??
+              'Failed to send OTP';
+          SnackbarManager.showError(context, message: errorMessage);
+        }
+      } else {
+        final errorMessage = jsonResponse['status_description'] ??
+            jsonResponse['message'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during resend OTP: $e');
+      String errorMessage = 'Error sending OTP';
+      if (e.response != null) {
+        final errorResponse = e.response!.data;
+        errorMessage = errorResponse['status_description'] ??
+            errorResponse['message'] ??
+            'Server error';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please try again.';
+      } else {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      SnackbarManager.showError(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _verifyCustomerOtp() async {
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer first.',
+      );
+      return;
+    }
+
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    final enteredOtp = _otpController.text.trim();
+    if (enteredOtp.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please enter the OTP.',
+      );
+      return;
+    }
+
+    if (_receivedOtp == null || _receivedOtp!.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'No OTP received. Please click "Verify Contact No" first.',
+      );
+      return;
+    }
+
+    // Check if entered OTP matches received OTP
+    if (enteredOtp != _receivedOtp) {
+      SnackbarManager.showError(
+        context,
+        message: 'Invalid OTP. Please try again.',
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      print('📡 Calling verify_customer API with customerId: ${_selectedCustomer!.id}');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.verifyCustomer,
+        data: {
+          'activeToken': activeToken,
+          'customerId': _selectedCustomer!.id,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Verify customer response received: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (jsonResponse['status_code'] == 'S1000') {
+          SnackbarManager.showSuccess(
+            context,
+            message: jsonResponse['status_description'] ?? 'Customer verified successfully!',
+          );
+          
+          // Update selected customer status to VERIFIED immediately
+          if (_selectedCustomer != null) {
+            setState(() {
+              _selectedCustomer = Customer(
+                id: _selectedCustomer!.id,
+                name: _selectedCustomer!.name,
+                contactNumber: _selectedCustomer!.contactNumber,
+                status: 'VERIFIED',
+                info: _selectedCustomer!.info,
+                lastVisit: _selectedCustomer!.lastVisit,
+                points: _selectedCustomer!.points,
+                visits: _selectedCustomer!.visits,
+              );
+              _receivedOtp = null;
+              _otpController.clear();
+            });
+          }
+          
+          // Refresh customers list to get updated status
+          _syncData();
+        } else {
+          final errorMessage = jsonResponse['status_description'] ??
+              'Failed to verify customer';
+          SnackbarManager.showError(context, message: errorMessage);
+        }
+      } else {
+        final errorMessage = jsonResponse['status_description'] ??
+            jsonResponse['message'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during verify customer: $e');
+      String errorMessage = 'Error verifying customer';
+      if (e.response != null) {
+        final errorResponse = e.response!.data;
+        errorMessage = errorResponse['status_description'] ??
+            errorResponse['message'] ??
+            'Server error';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please try again.';
+      } else {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      SnackbarManager.showError(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+      );
+    }
+  }
+
+  Future<void> _showFingerprintDeviceDialog() async {
+    final ipController = TextEditingController(text: _fingerprintDeviceIp ?? '');
+    
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+          elevation: 8.0,
+          child: Container(
+            padding: const EdgeInsets.all(24.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16.0),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Fingerprint Device IP Address',
+                    style: TextStyle(
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 24.0),
+                  TextField(
+                    controller: ipController,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: 'IP Address',
+                      hintText: 'Enter device IP address (e.g., 192.168.1.9)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: const BorderSide(
+                          color: Colors.blue,
+                          width: 2.0,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 12.0,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24.0),
+                  // Action buttons
+                  Row(
+                    children: [
+                      // Cancel button
+                      Expanded(
+                        child: Container(
+                          height: 44.0,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[100],
+                            borderRadius: BorderRadius.circular(8.0),
+                            border: Border.all(
+                              color: Colors.grey[300]!,
+                              width: 1.0,
+                            ),
+                          ),
+                          child: TextButton(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                            },
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                fontSize: 16.0,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12.0),
+                      // Save button
+                      Expanded(
+                        child: Container(
+                          height: 44.0,
+                          decoration: BoxDecoration(
+                            color: const Color(0xffd41818),
+                            borderRadius: BorderRadius.circular(8.0),
+                          ),
+                          child: TextButton(
+                            onPressed: () async {
+                              final ipAddress = ipController.text.trim();
+                              if (ipAddress.isEmpty) {
+                                SnackbarManager.showError(
+                                  context,
+                                  message: 'Please enter an IP address',
+                                );
+                                return;
+                              }
+
+                              // Validate IP address format (basic validation)
+                              final ipRegex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
+                              if (!ipRegex.hasMatch(ipAddress)) {
+                                SnackbarManager.showError(
+                                  context,
+                                  message: 'Please enter a valid IP address',
+                                );
+                                return;
+                              }
+
+                              // Save IP address to SharedPreferences
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.setString('fingerprintDeviceIp', ipAddress);
+
+                              setState(() {
+                                _fingerprintDeviceIp = ipAddress;
+                              });
+
+                              SnackbarManager.showSuccess(
+                                context,
+                                message: 'Fingerprint device IP address saved successfully!',
+                              );
+
+                              Navigator.of(context).pop();
+                            },
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                            ),
+                            child: const Text(
+                              'Save',
+                              style: TextStyle(
+                                fontSize: 16.0,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showPrintDialog() async {
@@ -1230,6 +1656,11 @@ class _HomePageState extends State<HomePage> {
         title: Text(businessName ?? 'Business Name'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _syncData,
+            tooltip: 'Reload',
+          ),
+          IconButton(
             icon: const Icon(Icons.print),
             onPressed: _showPrintDialog,
             tooltip: 'Print',
@@ -1247,30 +1678,52 @@ class _HomePageState extends State<HomePage> {
                   context,
                   MaterialPageRoute(builder: (context) => const PendingTransactionPage()),
                 );
+              } else if (value == 'fingerprint_device') {
+                _showFingerprintDeviceDialog();
               }
             },
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem<String>(
-                value: 'transactions',
-                child: Row(
-                  children: [
-                    Icon(Icons.receipt_long, size: 20,color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Transactions'),
-                  ],
+            itemBuilder: (BuildContext context) {
+              final items = <PopupMenuItem<String>>[
+                const PopupMenuItem<String>(
+                  value: 'transactions',
+                  child: Row(
+                    children: [
+                      Icon(Icons.receipt_long, size: 20,color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Transactions'),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'pending_payment',
-                child: Row(
-                  children: [
-                    Icon(Icons.payments_outlined, size: 20, color: Colors.orange),
-                    SizedBox(width: 8),
-                    Text('Pending Payments'),
-                  ],
+                const PopupMenuItem<String>(
+                  value: 'pending_payment',
+                  child: Row(
+                    children: [
+                      Icon(Icons.payments_outlined, size: 20, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text('Pending Payments'),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+
+              // Add Fingerprint Device menu item if fingerprint is enabled
+              if (_fingerprintEnabled) {
+                items.add(
+                  const PopupMenuItem<String>(
+                    value: 'fingerprint_device',
+                    child: Row(
+                      children: [
+                        Icon(Icons.fingerprint, size: 20, color: Colors.blue),
+                        SizedBox(width: 8),
+                        Text('Fingerprint Device'),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return items;
+            },
           ),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -1370,6 +1823,71 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 16),
+
+                      // Verify Contact No button (shown when customer is selected and status is not VERIFIED)
+                      if (_selectedCustomer != null && _selectedCustomer!.status != 'VERIFIED') ...[
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _resendOtp,
+                            icon: const Icon(Icons.verified_user),
+                            label: const Text('Verify Contact No'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        
+                        // OTP TextField and Verify button (shown when OTP is received)
+                        if (_receivedOtp != null && _receivedOtp!.isNotEmpty) ...[
+                          TextField(
+                            controller: _otpController,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Enter OTP',
+                              hintText: 'Enter the OTP received',
+                              border: OutlineInputBorder(),
+                              prefixIcon: Icon(Icons.lock),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _verifyCustomerOtp,
+                              icon: const Icon(Icons.check_circle),
+                              label: const Text('Verify'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ],
+
+                      // Scan Fingerprint button (shown when fingerprint is enabled)
+                      // if (_fingerprintEnabled) ...[
+                      //   SizedBox(
+                      //     width: double.infinity,
+                      //     child: ElevatedButton.icon(
+                      //       onPressed: _scanFingerprint,
+                      //       icon: Icon(Icons.fingerprint),
+                      //       label: Text('Scan Fingerprint'),
+                      //       style: ElevatedButton.styleFrom(
+                      //         backgroundColor: Color(0xffd41818),
+                      //         foregroundColor: Colors.white,
+                      //         padding: EdgeInsets.symmetric(vertical: 12),
+                      //       ),
+                      //     ),
+                      //   ),
+                      //   const SizedBox(height: 16),
+                      // ],
 
                       if (!_isLoadingItems) ...[
                         Row(
@@ -1817,7 +2335,7 @@ class _HomePageState extends State<HomePage> {
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: _showClearConfirmationDialog,
-                              icon: Icon(Icons.print),
+                              icon: Icon(Icons.delete_forever),
                               label: Text('Clear'),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.grey[600],

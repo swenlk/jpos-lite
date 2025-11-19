@@ -299,6 +299,13 @@ class _LoginPageState extends State<LoginPage> {
           }
         }
 
+        // Store fingerprint value from configurations
+        if (configurations != null && configurations['fingerprint'] != null) {
+          await prefs.setBool('fingerprint', configurations['fingerprint'] == true);
+        } else {
+          await prefs.setBool('fingerprint', false);
+        }
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomePage()),

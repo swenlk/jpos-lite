@@ -7,8 +7,13 @@ import '../api/endpoints.dart';
 
 class AddCustomerDialog extends StatefulWidget {
   final Function(String name, String contactNumber) onSave;
+  final bool fingerprintEnabled;
 
-  const AddCustomerDialog({super.key, required this.onSave});
+  const AddCustomerDialog({
+    super.key,
+    required this.onSave,
+    this.fingerprintEnabled = false,
+  });
 
   @override
   State<AddCustomerDialog> createState() => _AddCustomerDialogState();
@@ -21,6 +26,9 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
   bool _otpSent = false;
   String? _receivedOtp;
   String? _customerId;
+  String? _fingerprintId;
+  String? _fingerprintStatus;
+  bool _customerCreated = false;
 
   final _nameController = TextEditingController();
   final _contactController = TextEditingController();
@@ -103,17 +111,42 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
         if (jsonResponse['status_code'] == 'S1000') {
           final customerData = jsonResponse['customer'];
 
+          // Extract fingerprint data if present
+          final fingerprintData = customerData['fingerprint'] as Map<String, dynamic>?;
+          if (fingerprintData != null) {
+            setState(() {
+              _fingerprintId = fingerprintData['id']?.toString();
+              _fingerprintStatus = fingerprintData['status']?.toString();
+            });
+            print('✅ Fingerprint data received - ID: $_fingerprintId, Status: $_fingerprintStatus');
+          }
+
           if (_skipVerification) {
-            // Success - close dialog and show success message
-            SnackbarManager.showSuccess(
-              context,
-              message: 'Customer created successfully!',
-            );
+            // Always call onSave to refresh the customer list
             widget.onSave(
               _nameController.text.trim(),
               _contactController.text.trim(),
             );
-            Navigator.of(context).pop();
+            
+            // Mark customer as created and disable Save button
+            setState(() {
+              _customerCreated = true;
+            });
+            
+            // If fingerprint is enabled and fingerprint data is present, keep dialog open for scanning
+            if (widget.fingerprintEnabled && _fingerprintId != null && _fingerprintId!.isNotEmpty) {
+              SnackbarManager.showSuccess(
+                context,
+                message: 'Customer created successfully! You can now scan the fingerprint.',
+              );
+            } else {
+              // Success - close dialog and show success message
+              SnackbarManager.showSuccess(
+                context,
+                message: 'Customer created successfully!',
+              );
+              Navigator.of(context).pop();
+            }
           } else {
             // OTP verification required
             setState(() {
@@ -281,6 +314,130 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     }
   }
 
+  Future<void> _scanFingerprint() async {
+    if (activeToken == null || _fingerprintId == null || _fingerprintId!.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Missing required information for fingerprint scan.',
+      );
+      return;
+    }
+
+    // Get fingerprint device IP address from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
+
+    if (fingerprintDeviceIp == null || fingerprintDeviceIp.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please configure the fingerprint device IP address in settings.',
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 10);
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+
+      print('🔍 Sending fingerprint scan request with ID: $_fingerprintId');
+
+      final response = await dio.post(
+        'http://$fingerprintDeviceIp/ID_NUMBER',
+        data: {
+          "activeToken": activeToken,
+          "ID": _fingerprintId,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Fingerprint scan response received: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = response.data;
+        final status = responseData?['status']?.toString() ?? '';
+        final message = responseData?['message']?.toString() ?? 'Fingerprint scan initiated';
+        final step = responseData?['step']?.toString() ?? '';
+        final id = responseData?['ID']?.toString() ?? '';
+
+        print('Status: $status, Step: $step, Message: $message, ID: $id');
+
+        // Show the message from the API response based on status
+        final statusLower = status.toLowerCase();
+        if (statusLower == 'success') {
+          SnackbarManager.showSuccess(
+            context,
+            message: message,
+          );
+          // Close the dialog on successful fingerprint scan
+          Navigator.of(context).pop();
+        } else if (statusLower == 'progress') {
+          SnackbarManager.showInfo(
+            context,
+            message: message,
+          );
+          Navigator.of(context).pop();
+        } else if (statusLower == 'error' || statusLower == 'failed') {
+          SnackbarManager.showError(
+            context,
+            message: message,
+          );
+        } else {
+          // Default to info for unknown statuses
+          SnackbarManager.showInfo(
+            context,
+            message: message,
+          );
+        }
+      } else {
+        final errorMessage =
+            response.data?['message'] ??
+                response.data?['error'] ??
+                'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(
+          context,
+          message: errorMessage,
+        );
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during fingerprint scan: $e');
+      String errorMessage = 'Error scanning fingerprint';
+
+      if (e.response != null) {
+        print('Response status: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+        errorMessage =
+            e.response?.data?['message'] ??
+                e.response?.data?['error'] ??
+                'Server error (${e.response?.statusCode})';
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        errorMessage =
+            'Connection timeout. Please check your connection to the fingerprint scanner.';
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Request timeout. Please try again.';
+      } else if (e.type == DioExceptionType.connectionError) {
+        errorMessage =
+            'Connection error. Please check if the fingerprint scanner is connected.';
+      } else {
+        errorMessage = 'Network error: ${e.message}';
+      }
+
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ General error during fingerprint scan: $e');
+      SnackbarManager.showError(context, message: 'Unexpected error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -404,6 +561,27 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                   ],
                 ),
 
+                // Scan Fingerprint button (shown when fingerprint is enabled and customer is created with fingerprint data)
+                if (widget.fingerprintEnabled && _customerCreated && _fingerprintId != null && _fingerprintId!.isNotEmpty) ...[
+                  const SizedBox(height: 16.0),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isLoading ? null : _scanFingerprint,
+                      icon: const Icon(Icons.fingerprint),
+                      label: const Text('Scan Fingerprint'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xffd41818),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8.0),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+
                 // OTP text field (only shown when verification is not skipped and OTP is sent)
                 if (!_skipVerification && _otpSent) ...[
                   const SizedBox(height: 16.0),
@@ -490,11 +668,15 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                       child: Container(
                         height: 44.0,
                         decoration: BoxDecoration(
-                          color: Colors.green,
+                          color: (_customerCreated && widget.fingerprintEnabled) 
+                              ? Colors.grey 
+                              : Colors.green,
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         child: TextButton(
-                          onPressed: _isLoading ? null : _handleButtonPress,
+                          onPressed: (_isLoading || (_customerCreated && widget.fingerprintEnabled)) 
+                              ? null 
+                              : _handleButtonPress,
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
                             shape: RoundedRectangleBorder(
