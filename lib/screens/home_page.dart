@@ -703,6 +703,142 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _scanCustomerFingerprint() async {
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer first.',
+      );
+      return;
+    }
+
+    if (_selectedCustomer!.fingerprintId == null || _selectedCustomer!.fingerprintId!.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Customer does not have a fingerprint ID.',
+      );
+      return;
+    }
+
+    if (activeToken == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Active token not found. Please login again.',
+      );
+      return;
+    }
+
+    // Check if IP address is configured
+    if (_fingerprintDeviceIp == null || _fingerprintDeviceIp!.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please configure the fingerprint device IP address in settings.',
+      );
+      return;
+    }
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 10);
+      dio.options.receiveTimeout = const Duration(seconds: 10);
+
+      print('🔍 Sending fingerprint scan request for customer: ${_selectedCustomer!.id} with fingerprint ID: ${_selectedCustomer!.fingerprintId}');
+
+      final response = await dio.post(
+        'http://$_fingerprintDeviceIp/ID_NUMBER',
+        data: {
+          "activeToken": activeToken,
+          "ID": _selectedCustomer!.fingerprintId,
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Fingerprint scan response received: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final responseData = response.data;
+        final status = responseData?['status']?.toString() ?? '';
+        final message = responseData?['message']?.toString() ?? 'Fingerprint scan initiated';
+        final step = responseData?['step']?.toString() ?? '';
+        final id = responseData?['ID']?.toString() ?? '';
+
+        print('Status: $status, Step: $step, Message: $message, ID: $id');
+
+        // Show the message from the API response based on status
+        final statusLower = status.toLowerCase();
+        if (statusLower == 'success') {
+          SnackbarManager.showSuccess(
+            context,
+            message: message,
+          );
+          // Call _syncData on success
+          _syncData();
+        } else if (statusLower == 'progress') {
+          SnackbarManager.showInfo(
+            context,
+            message: message,
+          );
+        } else if (statusLower == 'error' || statusLower == 'failed') {
+          SnackbarManager.showError(
+            context,
+            message: message,
+          );
+        } else {
+          // Default to info for unknown statuses
+          SnackbarManager.showInfo(
+            context,
+            message: message,
+          );
+        }
+      } else {
+        final errorMessage =
+            response.data?['message'] ??
+                response.data?['error'] ??
+                'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(
+          context,
+          message: errorMessage,
+        );
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during fingerprint scan: $e');
+      String errorMessage = 'Error scanning fingerprint';
+
+      if (e.response != null) {
+        print('Response status: ${e.response?.statusCode}');
+        print('Response data: ${e.response?.data}');
+        errorMessage =
+            e.response?.data?['message'] ??
+                e.response?.data?['error'] ??
+                'Server error (${e.response?.statusCode})';
+      } else if (e.type == DioExceptionType.connectionTimeout) {
+        errorMessage =
+            'Connection timeout. Please check your connection to the fingerprint scanner.';
+      } else if (e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Request timeout. Please try again.';
+      } else if (e.type == DioExceptionType.connectionError) {
+        errorMessage =
+            'Connection error. Please check if the fingerprint scanner is connected.';
+      } else {
+        errorMessage = 'Network error: ${e.message}';
+      }
+
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ General error during fingerprint scan: $e');
+      SnackbarManager.showError(context, message: 'Unexpected error: $e');
+    }
+  }
+
   Future<void> _verifyCustomerOtp() async {
     if (_selectedCustomer == null) {
       SnackbarManager.showError(
@@ -936,7 +1072,7 @@ class _HomePageState extends State<HomePage> {
                         child: Container(
                           height: 44.0,
                           decoration: BoxDecoration(
-                            color: const Color(0xffd41818),
+                            color:  Colors.green,
                             borderRadius: BorderRadius.circular(8.0),
                           ),
                           child: TextButton(
@@ -1824,22 +1960,79 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(height: 16),
 
-                      // Verify Contact No button (shown when customer is selected and status is not VERIFIED)
-                      if (_selectedCustomer != null && _selectedCustomer!.status != 'VERIFIED') ...[
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton.icon(
-                            onPressed: _resendOtp,
-                            icon: const Icon(Icons.verified_user),
-                            label: const Text('Verify Contact No'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                          ),
+                      // Verify Contact No and Scan Fingerprint buttons
+                      if (_selectedCustomer != null) ...[
+                        Builder(
+                          builder: (context) {
+                            final showVerifyContact = _selectedCustomer!.status != 'VERIFIED';
+                            final showScanFingerprint = _selectedCustomer!.fingerprintId != null && 
+                                _selectedCustomer!.fingerprintStatus != null &&
+                                _selectedCustomer!.fingerprintStatus != 'VERIFIED';
+                            
+                            // If both are VERIFIED, show nothing
+                            if (!showVerifyContact && !showScanFingerprint) {
+                              return const SizedBox.shrink();
+                            }
+                            
+                            // If both buttons should be shown, display them in a Row
+                            if (showVerifyContact && showScanFingerprint) {
+                              return Column(
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: _resendOtp,
+                                          icon: const Icon(Icons.verified_user),
+                                          label: const Text('Verify Contact No'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.orange,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: _scanCustomerFingerprint,
+                                          icon: const Icon(Icons.fingerprint),
+                                          label: const Text('Scan Fingerprint'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xffd41818),
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                              );
+                            }
+                            
+                            // If only one button should be shown, display it full width
+                            return Column(
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: showVerifyContact ? _resendOtp : _scanCustomerFingerprint,
+                                    icon: Icon(showVerifyContact ? Icons.verified_user : Icons.fingerprint),
+                                    label: Text(showVerifyContact ? 'Verify Contact No' : 'Scan Fingerprint'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: showVerifyContact ? Colors.orange : const Color(0xffd41818),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                            );
+                          },
                         ),
-                        const SizedBox(height: 16),
                         
                         // OTP TextField and Verify button (shown when OTP is received)
                         if (_receivedOtp != null && _receivedOtp!.isNotEmpty) ...[

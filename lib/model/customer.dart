@@ -7,6 +7,8 @@ class Customer {
   final String? lastVisit;
   final String points;
   final String visits;
+  final String? fingerprintId;
+  final String? fingerprintStatus;
 
   Customer({
     required this.id, 
@@ -17,9 +19,21 @@ class Customer {
     this.lastVisit,
     required this.points,
     required this.visits,
+    this.fingerprintId,
+    this.fingerprintStatus,
   });
 
   factory Customer.fromJson(Map<String, dynamic> json) {
+    // Extract fingerprint data if present
+    final fingerprintData = json['fingerprint'] as Map<String, dynamic>?;
+    String? fingerprintId;
+    String? fingerprintStatus;
+    
+    if (fingerprintData != null) {
+      fingerprintId = fingerprintData['id']?.toString();
+      fingerprintStatus = fingerprintData['status']?.toString();
+    }
+    
     return Customer(
       id: json['_id'] ?? '',
       name: json['name'] ?? '',
@@ -29,6 +43,8 @@ class Customer {
       lastVisit: json['lastVisit'],
       points: json['points'] ?? '0',
       visits: json['visits'] ?? '0',
+      fingerprintId: fingerprintId,
+      fingerprintStatus: fingerprintStatus,
     );
   }
 
@@ -42,6 +58,11 @@ class Customer {
       'lastVisit': lastVisit,
       'points': points,
       'visits': visits,
+      if (fingerprintId != null || fingerprintStatus != null)
+        'fingerprint': {
+          if (fingerprintId != null) 'id': fingerprintId,
+          if (fingerprintStatus != null) 'status': fingerprintStatus,
+        },
     };
   }
 }
