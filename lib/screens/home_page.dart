@@ -84,7 +84,7 @@ class _HomePageState extends State<HomePage> {
         _fingerprintEnabled = prefs.getBool('fingerprint') ?? false;
         _fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
       });
-      print(storedToken);
+      // print(storedToken);
     } else {
       Navigator.pushReplacement(
         context,
@@ -1153,13 +1153,13 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _showCheckoutDialog() async {
     // Validate customer selection
-    if (_selectedCustomer == null) {
-      SnackbarManager.showError(
-        context,
-        message: 'Please select a customer',
-      );
-      return;
-    }
+    // if (_selectedCustomer == null) {
+    //   SnackbarManager.showError(
+    //     context,
+    //     message: 'Please select a customer',
+    //   );
+    //   return;
+    // }
 
     // Validate cart is not empty
     if (_cartItems.isEmpty) {
@@ -1199,15 +1199,6 @@ class _HomePageState extends State<HomePage> {
         context,
         message:
             'No Bluetooth printer connected. Please connect a printer first.',
-      );
-      return;
-    }
-
-    // Check if customer is selected
-    if (_selectedCustomer == null) {
-      SnackbarManager.showError(
-        context,
-        message: 'Please select a customer before printing.',
       );
       return;
     }
@@ -1319,9 +1310,9 @@ class _HomePageState extends State<HomePage> {
     // Note: Business name is now handled by PrintService, so we skip it here
 
     // Customer info
-    String customerStr = _selectedCustomer!.name;
+    String customerStr = _selectedCustomer != null ? _selectedCustomer!.name : 'GUEST';
     int customerSpace = totalWidth - customerStr.length - ('Customer:').length;
-    content.writeln('Customer:' + ' ' * customerSpace + customerStr);
+    content.writeln('Customer:' + ' ' * customerSpace + customerStr); 
 
     // Transaction ID
     final transactionId = generateTransactionID();
@@ -1566,15 +1557,6 @@ class _HomePageState extends State<HomePage> {
     String? paymentReference,
     List<SplitPaymentData>? splitPayments,
   }) async {
-    // Validate customer selection
-    if (_selectedCustomer == null) {
-      SnackbarManager.showError(
-        context,
-        message: 'Please select a customer',
-      );
-      return;
-    }
-
     // Validate cart is not empty
     if (_cartItems.isEmpty) {
       SnackbarManager.showError(
@@ -1669,8 +1651,8 @@ class _HomePageState extends State<HomePage> {
       final requestBody = {
         "activeToken": activeToken,
         "transactionId": transactionId,
-        "transactionType": "CUSTOMER",
-        "customerId": _selectedCustomer!.id,
+        "transactionType": _selectedCustomer != null ? "CUSTOMER" : "GUEST",
+        "customerId": _selectedCustomer != null ? _selectedCustomer!.id : "",
         "subTotal": subTotal,
         "discount": "0.00",
         "totalDiscountValue": null,
@@ -1911,8 +1893,8 @@ class _HomePageState extends State<HomePage> {
                               decoratorProps: DropDownDecoratorProps(
                                 decoration: InputDecoration(
                                   hintText: _customers.isEmpty
-                                      ? 'No customers available'
-                                      : 'Select a customer',
+                                      ? 'GUEST Customer'
+                                      : 'GUEST Customer',
                                   border: OutlineInputBorder(),
                                   prefixIcon: Icon(Icons.person),
                                 ),
