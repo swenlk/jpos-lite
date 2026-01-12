@@ -21,6 +21,13 @@ import 'package:lite/widgets/checkout_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+class _TileCardData {
+  final Item item;
+  final Inventory? inventory;
+
+  _TileCardData({required this.item, this.inventory});
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -33,6 +40,8 @@ class _HomePageState extends State<HomePage> {
   String? businessName;
   bool _fingerprintEnabled = false;
   String? _fingerprintDeviceIp;
+
+  bool _tileLayout = false;
 
   List<Customer> _customers = [];
   Customer? _selectedCustomer;
@@ -83,6 +92,7 @@ class _HomePageState extends State<HomePage> {
             prefs.getString('businessName') ?? 'No Business Name found';
         _fingerprintEnabled = prefs.getBool('fingerprint') ?? false;
         _fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
+        _tileLayout = prefs.getBool('tileLayout') ?? false;
       });
       // print(storedToken);
     } else {
@@ -426,12 +436,10 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  void _addToCart() {
-    if (_selectedItem == null) return;
-
-    if (_selectedItem!.inventoried) {
-      // For inventoried items, we need a selected inventory
-      if (_selectedInventory == null) {
+  void _addItemToCart(Item item, Inventory? inventory, int quantity) {
+    if (item.inventoried) {
+      // For inventoried items, we need an inventory
+      if (inventory == null) {
         SnackbarManager.showError(
           context,
           message: 'Please select a batch first',
@@ -439,13 +447,13 @@ class _HomePageState extends State<HomePage> {
         return;
       }
 
-      final maxQuantity = double.parse(_selectedInventory!.stock).toInt();
+      final maxQuantity = double.parse(inventory.stock).toInt();
       
       // Check if this batch is already in cart
       final existingCartItem = _cartItems.firstWhere(
             (cartItem) =>
-        cartItem.itemId == _selectedItem!.id &&
-            cartItem.batchNumber == _selectedInventory!.batchNumber,
+        cartItem.itemId == item.id &&
+            cartItem.batchNumber == inventory.batchNumber,
         orElse: () => CartItem(
           itemId: '',
           itemDisplayName: '',
@@ -457,7 +465,7 @@ class _HomePageState extends State<HomePage> {
 
       if (existingCartItem.itemId.isNotEmpty) {
         // Update quantity if already in cart
-        final newQuantity = existingCartItem.quantity + _selectedQuantity;
+        final newQuantity = existingCartItem.quantity + quantity;
         if (newQuantity > maxQuantity) {
           SnackbarManager.showError(
             context,
@@ -467,8 +475,8 @@ class _HomePageState extends State<HomePage> {
         }
         
         final updatedCartItems = _cartItems.map((cartItem) {
-          if (cartItem.itemId == _selectedItem!.id &&
-              cartItem.batchNumber == _selectedInventory!.batchNumber) {
+          if (cartItem.itemId == item.id &&
+              cartItem.batchNumber == inventory.batchNumber) {
             return cartItem.copyWith(quantity: newQuantity);
           }
           return cartItem;
@@ -479,7 +487,7 @@ class _HomePageState extends State<HomePage> {
         });
       } else {
         // Validate quantity before adding
-        if (_selectedQuantity > maxQuantity) {
+        if (quantity > maxQuantity) {
           SnackbarManager.showError(
             context,
             message: 'Quantity cannot exceed available stock',
@@ -489,11 +497,11 @@ class _HomePageState extends State<HomePage> {
         
         // Add new item to cart
         final cartItem = CartItem(
-          itemId: _selectedItem!.id,
-          itemDisplayName: _selectedItem!.displayName,
-          batchNumber: _selectedInventory!.batchNumber,
-          salesPrice: _selectedInventory!.salesPrice,
-          quantity: _selectedQuantity,
+          itemId: item.id,
+          itemDisplayName: item.displayName,
+          batchNumber: inventory.batchNumber,
+          salesPrice: inventory.salesPrice,
+          quantity: quantity,
           maxQuantity: maxQuantity,
         );
 
@@ -504,7 +512,7 @@ class _HomePageState extends State<HomePage> {
     } else {
       // For non-inventoried items, add directly to cart
       final existingCartItem = _cartItems.firstWhere(
-            (cartItem) => cartItem.itemId == _selectedItem!.id,
+            (cartItem) => cartItem.itemId == item.id,
         orElse: () => CartItem(
           itemId: '',
           itemDisplayName: '',
@@ -516,9 +524,9 @@ class _HomePageState extends State<HomePage> {
 
       if (existingCartItem.itemId.isNotEmpty) {
         // Update quantity if already in cart (no limit for non-inventoried items)
-        final newQuantity = existingCartItem.quantity + _selectedQuantity;
+        final newQuantity = existingCartItem.quantity + quantity;
         final updatedCartItems = _cartItems.map((cartItem) {
-          if (cartItem.itemId == _selectedItem!.id) {
+          if (cartItem.itemId == item.id) {
             return cartItem.copyWith(quantity: newQuantity);
           }
           return cartItem;
@@ -530,10 +538,10 @@ class _HomePageState extends State<HomePage> {
       } else {
         // Add new item to cart
         final cartItem = CartItem(
-          itemId: _selectedItem!.id,
-          itemDisplayName: _selectedItem!.displayName,
-          salesPrice: _selectedItem!.salesPrice ?? '0.0',
-          quantity: _selectedQuantity,
+          itemId: item.id,
+          itemDisplayName: item.displayName,
+          salesPrice: item.salesPrice ?? '0.0',
+          quantity: quantity,
           maxQuantity: 999, // No stock limit for non-inventoried items
         );
 
@@ -543,12 +551,142 @@ class _HomePageState extends State<HomePage> {
       }
     }
     SnackbarManager.showSuccess(context, message: 'Item added to cart');
+  }
+
+  void _addToCart() {
+    if (_selectedItem == null) return;
+    _addItemToCart(_selectedItem!, _selectedInventory, _selectedQuantity);
     
     // Reset quantity to 1 after successfully adding to cart
     setState(() {
       _selectedQuantity = 1;
       _quantityController.text = '$_selectedQuantity';
     });
+  }
+
+  Widget _buildItemTileCard(Item item) {
+    return GestureDetector(
+      onTap: () {
+        _addItemToCart(item, null, 1);
+      },
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.displayName,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              // const SizedBox(height: 8),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.attach_money,
+                    size: 14,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Rs. ${item.salesPrice ?? '0.0'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInventoryTileCard(Item item, Inventory inventory) {
+    return GestureDetector(
+      onTap: () {
+        _addItemToCart(item, inventory, 1); 
+      },
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.displayName,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              // const SizedBox(height: 6),
+              Text(
+                'Batch ${inventory.batchNumber}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[700],
+                ),
+              ),
+              // const SizedBox(height: 6),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.attach_money,
+                    size: 12,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Rs. ${inventory.salesPrice}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              // const SizedBox(height: 4),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.inventory_2,
+                    size: 12,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Stock: ${inventory.stock}',
+                    style: TextStyle(
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _removeFromCart(int index) {
@@ -2065,222 +2203,309 @@ class _HomePageState extends State<HomePage> {
                       // ],
 
                       if (!_isLoadingItems) ...[
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownSearch<Item>(
-                                selectedItem: _selectedItem,
-                                items: (filter, infiniteScrollProps) => _items
-                                    .where(
-                                      (item) => item.displayName.toLowerCase().contains(
-                                    filter.toLowerCase(),
-                                  ),
-                                )
-                                    .toList(),
-                                onChanged: (Item? newValue) {
-                                  _onItemSelected(newValue);
-                                },
-                                itemAsString: (Item item) => item.displayName,
-                                compareFn: (Item item1, Item item2) => item1.id == item2.id,
-                                decoratorProps: DropDownDecoratorProps(
-                                  decoration: InputDecoration(
-                                    hintText: _items.isEmpty
-                                        ? 'No items available'
-                                        : 'Select an item',
-                                    // hintStyle: TextStyle(
-                                    //   fontSize: 14.0,
-                                    // ),
-                                    border: OutlineInputBorder(),
-                                    // prefixIcon: Icon(Icons.inventory_2),
-                                  ),
-                                ),
-                                popupProps: PopupProps.menu(
-                                  showSearchBox: true,
-                                  searchFieldProps: TextFieldProps(
+                        if (!_tileLayout) ...[
+                          // Standard mode: Show dropdown, quantity controls, and Add to Cart button
+                          Row(
+                            children: [
+                              Expanded(
+                                child: DropdownSearch<Item>(
+                                  selectedItem: _selectedItem,
+                                  items: (filter, infiniteScrollProps) => _items
+                                      .where((item) {
+                                        // Filter by search text
+                                        if (!item.displayName.toLowerCase().contains(
+                                              filter.toLowerCase(),
+                                            )) {
+                                          return false;
+                                        }
+                                        
+                                        // For inventoried items, check if any inventory has stock > 0
+                                        if (item.inventoried) {
+                                          if (item.inventory.isEmpty) {
+                                            return false; // Skip if no inventory
+                                          }
+                                          // Check if at least one inventory has stock > 0
+                                          final hasStock = item.inventory.any((inventory) {
+                                            final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                            return stock > 0;
+                                          });
+                                          return hasStock;
+                                        }
+                                        
+                                        // For non-inventoried items, include them
+                                        return true;
+                                      })
+                                      .toList(),
+                                  onChanged: (Item? newValue) {
+                                    _onItemSelected(newValue);
+                                  },
+                                  itemAsString: (Item item) => item.displayName,
+                                  compareFn: (Item item1, Item item2) => item1.id == item2.id,
+                                  decoratorProps: DropDownDecoratorProps(
                                     decoration: InputDecoration(
-                                      hintText: 'Search items...',
-                                      prefixIcon: Icon(Icons.search),
+                                      hintText: _items.isEmpty
+                                          ? 'No items available'
+                                          : 'Select an item',
+                                      // hintStyle: TextStyle(
+                                      //   fontSize: 14.0,
+                                      // ),
+                                      border: OutlineInputBorder(),
+                                      // prefixIcon: Icon(Icons.inventory_2),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            // Quantity controls
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(Icons.remove),
-                                  onPressed: _decreaseQuantity,
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.grey[200],
-                                    padding: EdgeInsets.all(8),
-                                  ),
-                                  constraints: BoxConstraints(
-                                    minWidth: 40,
-                                    minHeight: 40,
-                                  ),
-                                ),
-                                SizedBox(
-                                  width: 60,
-                                  child: TextField(
-                                    controller: _quantityController,
-                                    textAlign: TextAlign.center,
-                                    keyboardType: TextInputType.number,
-                                    onChanged: _onQuantityChanged,
-                                    decoration: InputDecoration(
-                                      border: OutlineInputBorder(),
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 8,
+                                  popupProps: PopupProps.menu(
+                                    showSearchBox: true,
+                                    searchFieldProps: TextFieldProps(
+                                      decoration: InputDecoration(
+                                        hintText: 'Search items...',
+                                        prefixIcon: Icon(Icons.search),
                                       ),
                                     ),
                                   ),
                                 ),
-                                IconButton(
-                                  icon: Icon(Icons.add),
-                                  onPressed: _increaseQuantity,
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.grey[200],
-                                    padding: EdgeInsets.all(8),
-                                  ),
-                                  constraints: BoxConstraints(
-                                    minWidth: 40,
-                                    minHeight: 40,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Inventory cards for inventoried items
-                      if (_selectedItem != null && _selectedItem!.inventoried) ...[
-                        Text(
-                          'Select Batch:',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Row(
-                            children: _selectedItem!.inventory.map((inventory) {
-                              final isSelected =
-                                  _selectedInventory?.batchNumber ==
-                                      inventory.batchNumber;
-                              return GestureDetector(
-                                onTap: () {
-                                  _onInventorySelected(inventory);
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(right: 2),
-                                  child: Card(
-                                  elevation: isSelected ? 4 : 1,
-                                  // color: isSelected ? Color(0xffd41818).withOpacity(0.1) : Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    side: BorderSide(
-                                      color: isSelected
-                                          ? Color(0xffd41818)
-                                          : Colors.grey.shade300,
-                                      width: isSelected ? 2 : 1,
-                                    ),
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(16),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-
-                                            Text(
-                                              'Batch ${inventory.batchNumber}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                                // color: isSelected ? Color(0xffd41818) : Colors.black87,
-                                              ),
-                                            ),
-                                            if (isSelected) ...[
-                                              const SizedBox(width: 8),
-                                              Icon(
-                                                Icons.check_circle,
-                                                color: Color(0xffd41818),
-                                                size: 20,
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                        // const SizedBox(height: 6),
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.attach_money,
-                                              // color: Colors.green.shade600,
-                                              size: 12,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Rs. ${inventory.salesPrice}',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                // color: Colors.green.shade700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        // const SizedBox(height: 8),
-                                        Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.inventory_2,
-                                              // color: Colors.blue.shade600,
-                                              size: 12,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Stock: ${inventory.stock}',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                // color: Colors.blue.shade700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
                               ),
-                            );
-                            }).toList(),
+                              const SizedBox(width: 12),
+                              // Quantity controls
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(Icons.remove),
+                                    onPressed: _decreaseQuantity,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.grey[200],
+                                      padding: EdgeInsets.all(8),
+                                    ),
+                                    constraints: BoxConstraints(
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                    ),
+                                  ),
+                                  SizedBox(
+                                    width: 60,
+                                    child: TextField(
+                                      controller: _quantityController,
+                                      textAlign: TextAlign.center,
+                                      keyboardType: TextInputType.number,
+                                      onChanged: _onQuantityChanged,
+                                      decoration: InputDecoration(
+                                        border: OutlineInputBorder(),
+                                        contentPadding: EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 8,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: Icon(Icons.add),
+                                    onPressed: _increaseQuantity,
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.grey[200],
+                                      padding: EdgeInsets.all(8),
+                                    ),
+                                    constraints: BoxConstraints(
+                                      minWidth: 40,
+                                      minHeight: 40,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
-                      // Add to Cart button
-                      if (_selectedItem != null) ...[
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _addToCart,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Color(0xffd41818),
-                              foregroundColor: Colors.white,
-                              padding: EdgeInsets.symmetric(vertical: 10),
+                          const SizedBox(height: 16),
+                          // Inventory cards for inventoried items
+                          if (_selectedItem != null && _selectedItem!.inventoried) ...[
+                            Text(
+                              'Select Batch:',
+                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                             ),
-                            child: Text('Add to Cart'),
+                            const SizedBox(height: 8),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: _selectedItem!.inventory
+                                    .where((inventory) {
+                                      final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                      return stock > 0;
+                                    })
+                                    .map((inventory) {
+                                  final isSelected =
+                                      _selectedInventory?.batchNumber ==
+                                          inventory.batchNumber;
+                                  return GestureDetector(
+                                    onTap: () {
+                                      _onInventorySelected(inventory);
+                                    },
+                                    child: Container(
+                                      margin: const EdgeInsets.only(right: 2),
+                                      child: Card(
+                                      elevation: isSelected ? 4 : 1,
+                                      // color: isSelected ? Color(0xffd41818).withOpacity(0.1) : Colors.white,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        side: BorderSide(
+                                          color: isSelected
+                                              ? Color(0xffd41818)
+                                              : Colors.grey.shade300,
+                                          width: isSelected ? 2 : 1,
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(16),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+
+                                                Text(
+                                                  'Batch ${inventory.batchNumber}',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 14,
+                                                    // color: isSelected ? Color(0xffd41818) : Colors.black87,
+                                                  ),
+                                                ),
+                                                if (isSelected) ...[
+                                                  const SizedBox(width: 8),
+                                                  Icon(
+                                                    Icons.check_circle,
+                                                    color: Color(0xffd41818),
+                                                    size: 20,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                            // const SizedBox(height: 6),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.attach_money,
+                                                  // color: Colors.green.shade600,
+                                                  size: 12,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Rs. ${inventory.salesPrice}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    // color: Colors.green.shade700,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            // const SizedBox(height: 8),
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.inventory_2,
+                                                  // color: Colors.blue.shade600,
+                                                  size: 12,
+                                                ),
+                                                const SizedBox(width: 4),
+                                                Text(
+                                                  'Stock: ${inventory.stock}',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    // color: Colors.blue.shade700,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                                }).toList(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          // Add to Cart button
+                          if (_selectedItem != null) ...[
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: _addToCart,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xffd41818),
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                ),
+                                child: Text('Add to Cart'),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ] else ...[
+                          // Tile mode: Show items as cards
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              if (_items.isEmpty) {
+                                return Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(32.0),
+                                    child: Text(
+                                      'No items available',
+                                      style: TextStyle(fontSize: 16),
+                                    ),
+                                  ),
+                                );
+                              }
+                              
+                              // Build a list of card data for efficient access
+                              List<_TileCardData> cardData = [];
+                              for (var item in _items) {
+                                if (item.inventoried) {
+                                  // For inventoried items, only load if inventory array has objects
+                                  if (item.inventory.isNotEmpty) {
+                                    // Create a card for each inventory entry, but skip if stock is 0
+                                    for (var inventory in item.inventory) {
+                                      final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                      if (stock > 0) {
+                                        cardData.add(_TileCardData(item: item, inventory: inventory));
+                                      }
+                                    }
+                                  }
+                                  // If inventory is empty, skip this item (don't add to cardData)
+                                } else {
+                                  // For non-inventoried items, create a single card with displayName and salesPrice
+                                  cardData.add(_TileCardData(item: item, inventory: null));
+                                }
+                              }
+                              
+                              // Calculate card width to ensure at least 3 cards per row
+                              const spacing = 6.0;
+                              const minCardsPerRow = 3;
+                              final availableWidth = constraints.maxWidth;
+                              // Calculate width for exactly 3 cards: (availableWidth - (spacing * 2)) / 3
+                              // This ensures at least 3 cards per row
+                              final cardWidth = (availableWidth - (spacing * (minCardsPerRow - 1))) / minCardsPerRow;
+                              
+                              return Wrap(
+                                spacing: spacing,
+                                runSpacing: spacing,
+                                children: cardData.map((data) {
+                                  return SizedBox(
+                                    width: cardWidth,
+                                    child: data.inventory != null
+                                        ? _buildInventoryTileCard(data.item, data.inventory!)
+                                        : _buildItemTileCard(data.item),
+                                  );
+                                }).toList(),
+                              );
+                            },
                           ),
-                        ),
-                        const SizedBox(height: 16),
+                          const SizedBox(height: 16),
+                        ],
                       ],
 
                       // Cart table

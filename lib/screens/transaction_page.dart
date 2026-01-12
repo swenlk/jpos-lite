@@ -523,7 +523,12 @@ class _TransactionPageState extends State<TransactionPage> {
                                     Row(
                                       children: [
                                         Expanded(
-                                          child: _buildCompactInfo('Customer Name', transaction.customerName),
+                                          child: _buildCompactInfo(
+                                            'Customer Name',
+                                            (transaction.customerName.isNotEmpty)
+                                                ? transaction.customerName
+                                                : 'GUEST',
+                                          ),
                                         ),
                                         const SizedBox(width: 16),
                                         Expanded(

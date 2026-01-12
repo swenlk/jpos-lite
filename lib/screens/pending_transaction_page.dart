@@ -333,7 +333,14 @@ class _PendingTransactionPageState extends State<PendingTransactionPage> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: _buildCompactInfo('Order Date', _formatOrderDate(transaction.orderDate)),
+                                      child: _buildCompactInfo(
+                                        'Order Date',
+                                        _formatOrderDate(
+                                          transaction.orderDate.isNotEmpty
+                                              ? transaction.orderDate
+                                              : transaction.createdDate,
+                                        ),
+                                      ),
                                     ),
                                     const SizedBox(width: 16),
                                     Expanded(
@@ -346,7 +353,12 @@ class _PendingTransactionPageState extends State<PendingTransactionPage> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: _buildCompactInfo('Customer Name', transaction.customerName),
+                                      child: _buildCompactInfo(
+                                        'Customer Name',
+                                        transaction.customerName.isNotEmpty
+                                            ? transaction.customerName
+                                            : 'GUEST',
+                                      ),
                                     ),
                                     const SizedBox(width: 16),
                                     Expanded(

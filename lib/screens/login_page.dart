@@ -306,6 +306,13 @@ class _LoginPageState extends State<LoginPage> {
           await prefs.setBool('fingerprint', false);
         }
 
+        // Store tileMode value from configurations
+        if (configurations != null && configurations['tileLayout'] != null) {
+          await prefs.setBool('tileLayout', configurations['tileLayout'] == true);
+        } else {
+          await prefs.setBool('tileLayout', false);
+        }
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomePage()),

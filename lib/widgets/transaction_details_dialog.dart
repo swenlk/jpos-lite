@@ -448,31 +448,29 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                       icon: Icons.person,
                       child: Column(
                         children: [
-                          if (_shouldDisplayValue(transaction.customerName) ||
-                              _shouldDisplayValue(transaction.contactNumber))
-                            Row(
-                              children: [
-                                if (_shouldDisplayValue(transaction.customerName))
-                                  Expanded(
-                                    child: _buildModernDetailRow(
-                                      'Name',
-                                      transaction.customerName,
-                                      icon: Icons.badge,
-                                    ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildModernDetailRow(
+                                  'Name',
+                                  _shouldDisplayValue(transaction.customerName)
+                                      ? transaction.customerName
+                                      : 'GUEST',
+                                  icon: Icons.badge,
+                                ),
+                              ),
+                              if (_shouldDisplayValue(transaction.contactNumber)) ...[
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: _buildModernDetailRow(
+                                    'Contact',
+                                    transaction.contactNumber,
+                                    icon: Icons.phone,
                                   ),
-                                if (_shouldDisplayValue(transaction.customerName) &&
-                                    _shouldDisplayValue(transaction.contactNumber))
-                                  const SizedBox(width: 16),
-                                if (_shouldDisplayValue(transaction.contactNumber))
-                                  Expanded(
-                                    child: _buildModernDetailRow(
-                                      'Contact',
-                                      transaction.contactNumber,
-                                      icon: Icons.phone,
-                                    ),
-                                  ),
+                                ),
                               ],
-                            ),
+                            ],
+                          ),
                           if (_shouldDisplayValue(transaction.note))
                             _buildModernDetailRow(
                               'Note',
