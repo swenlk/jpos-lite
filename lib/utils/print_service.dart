@@ -106,6 +106,8 @@ class PrintService {
   /// [businessName] - The business name to print
   /// [content] - The rest of the receipt content (items, totals, etc.)
   /// [logoPath] - Optional path to the logo image file
+  /// [contactNumber] - Optional contact number to display below business name
+  /// [address] - Optional address to display below business name
   /// [paperSize] - Paper size for the printer (default: mm58)
   /// 
   /// Returns a list of bytes ready to be sent to the printer
@@ -113,6 +115,8 @@ class PrintService {
     required String businessName,
     required String content,
     String? logoPath,
+    String? contactNumber,
+    String? address,
     PaperSize paperSize = PaperSize.mm58,
   }) async {
     try {
@@ -191,6 +195,22 @@ class PrintService {
         businessName,
         styles: const PosStyles(align: PosAlign.center),
       );
+
+      // Add address below business name if provided
+      if (address != null && address.isNotEmpty) {
+        printBytes += generator.text(
+          address,
+          styles: const PosStyles(align: PosAlign.center),
+        );
+      }
+      
+      // Add contact number below business name if provided
+      if (contactNumber != null && contactNumber.isNotEmpty) {
+        printBytes += generator.text(
+          'Phone: $contactNumber',
+          styles: const PosStyles(align: PosAlign.center),
+        );
+      }
       
       // Add the rest of the content
       // Split content into lines and process
@@ -356,6 +376,8 @@ class PrintService {
   static Future<List<int>> generatePrintBytesWithLogo({
     required String businessName,
     required String content,
+    String? contactNumber,
+    String? address,
     PaperSize paperSize = PaperSize.mm58,
   }) async {
     final logoPath = await getCachedLogoPath();
@@ -363,6 +385,8 @@ class PrintService {
       businessName: businessName,
       content: content,
       logoPath: logoPath,
+      contactNumber: contactNumber,
+      address: address,
       paperSize: paperSize,
     );
   }

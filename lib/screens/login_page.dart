@@ -279,12 +279,16 @@ class _LoginPageState extends State<LoginPage> {
       if (jsonResponse['status_code'] == 'S1000') {
         final activeToken = jsonResponse['authentication_token'] ?? '';
         final businessName = jsonResponse['businessName'] ?? '';
+        final contactNumber = jsonResponse['contactNumber'] ?? '';
+        final address = jsonResponse['address'] ?? '';
         final customers = jsonResponse['customers'] ?? [];
         final items = jsonResponse['items'] ?? [];
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('activeToken', activeToken);
         await prefs.setString('businessName', businessName);
+        await prefs.setString('contactNumber', contactNumber);
+        await prefs.setString('address', address);
         await prefs.setString('customers', json.encode(customers));
         await prefs.setString('items', json.encode(items));
 
@@ -311,6 +315,13 @@ class _LoginPageState extends State<LoginPage> {
           await prefs.setBool('tileLayout', configurations['tileLayout'] == true);
         } else {
           await prefs.setBool('tileLayout', false);
+        }
+
+        // Store quickInvoice value from configurations
+        if (configurations != null && configurations['quickInvoice'] != null) {
+          await prefs.setBool('quickInvoice', configurations['quickInvoice'] == true);
+        } else {
+          await prefs.setBool('quickInvoice', false);
         }
 
         Navigator.pushReplacement(

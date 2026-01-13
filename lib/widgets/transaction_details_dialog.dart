@@ -5,6 +5,7 @@ import 'package:lite/model/transaction.dart';
 import 'package:lite/widgets/checkout_dialog.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/snackbar_manager.dart';
+import 'package:lite/utils/bill_printer_service.dart';
 import 'package:lite/api/endpoints.dart';
 
 class TransactionDetailsDialog extends StatefulWidget {
@@ -292,6 +293,31 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
     }
   }
 
+  Future<void> _handlePrint() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    await BillPrinterService.printTransaction(
+      context: context,
+      transaction: transaction,
+      onSuccess: () {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+      onError: () {
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+          });
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -353,11 +379,22 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                       ),
                     ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white, size: 24),
-                    onPressed: () => Navigator.of(context).pop(),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.print, color: Colors.white, size: 24),
+                        onPressed: _isLoading ? null : _handlePrint,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Print',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white, size: 24),
+                        onPressed: () => Navigator.of(context).pop(),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
                   ),
                 ],
               ),

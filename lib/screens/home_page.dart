@@ -13,11 +13,13 @@ import 'package:lite/screens/pending_transaction_page.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/print_service.dart';
 import 'package:lite/utils/snackbar_manager.dart';
+import 'package:lite/utils/bill_printer_service.dart';
 import 'package:lite/widgets/add_customer_dialog.dart';
 import 'package:lite/widgets/clear_confirmation_dialog.dart';
 import 'package:lite/widgets/logout_dialog.dart';
 import 'package:lite/widgets/print_dialog.dart';
 import 'package:lite/widgets/checkout_dialog.dart';
+import 'package:lite/widgets/transaction_success_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
@@ -38,10 +40,13 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? activeToken;
   String? businessName;
+  String? contactNumber;
+  String? address;
   bool _fingerprintEnabled = false;
   String? _fingerprintDeviceIp;
 
   bool _tileLayout = false;
+  bool _quickInvoice = false;
 
   List<Customer> _customers = [];
   Customer? _selectedCustomer;
@@ -57,6 +62,18 @@ class _HomePageState extends State<HomePage> {
 
   // Cart data
   List<CartItem> _cartItems = [];
+
+  // Saved cart data for printing after transaction
+  List<CartItem>? _savedCartItems;
+  Customer? _savedCustomer;
+  double? _savedTotal;
+  double? _savedCashPayment;
+  double? _savedCardPayment;
+  double? _savedBankPayment;
+  double? _savedVoucherPayment;
+  double? _savedChequePayment;
+  double? _savedBalance;
+  String? _savedOrderDate;
 
   // OTP verification
   String? _receivedOtp;
@@ -85,14 +102,18 @@ class _HomePageState extends State<HomePage> {
     final prefs = await SharedPreferences.getInstance();
     final String? storedToken = prefs.getString('activeToken');
 
+    print(storedToken);
+
     if (storedToken != null && storedToken.isNotEmpty) {
       setState(() {
         activeToken = storedToken;
-        businessName =
-            prefs.getString('businessName') ?? 'No Business Name found';
+        businessName = prefs.getString('businessName') ?? 'No Business Name found';
+        contactNumber = prefs.getString('contactNumber') ?? '';
+        address = prefs.getString('address') ?? '';
         _fingerprintEnabled = prefs.getBool('fingerprint') ?? false;
         _fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
         _tileLayout = prefs.getBool('tileLayout') ?? false;
+        _quickInvoice = prefs.getBool('quickInvoice') ?? false;
       });
       // print(storedToken);
     } else {
@@ -1329,299 +1350,203 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _printBill() async {
-    // Check if Bluetooth device is connected
+  Future<void> _printBillImmediately() async {
+    // Check if device is connected
     BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
-    if (connectedDevice == null) {
-      SnackbarManager.showError(
-        context,
-        message:
-            'No Bluetooth printer connected. Please connect a printer first.',
-      );
-      return;
-    }
-
-    // Check if items are added to cart
-    if (_cartItems.isEmpty) {
-      SnackbarManager.showError(
-        context,
-        message: 'Please add items to cart before printing.',
-      );
-      return;
-    }
-
-    print('🖨️ Starting direct print process...');
-
-    try {
-      // Check if device is still connected
-      BluetoothConnectionState connectionState =
-          await connectedDevice.connectionState.first;
-      if (connectionState != BluetoothConnectionState.connected) {
-        SnackbarManager.showError(
-          context,
-          message: 'Bluetooth printer disconnected. Please reconnect.',
-        );
-        return;
-      }
-
-      // Discover services
-      List<BluetoothService> services = await connectedDevice
-          .discoverServices();
-      BluetoothService? printerService;
-      BluetoothCharacteristic? printerCharacteristic;
-
-      // Look for printer service (common UUIDs for thermal printers)
-      for (BluetoothService service in services) {
-        print('🔍 Found service: ${service.uuid}');
-
-        // Check for common printer service UUIDs
-        if (service.uuid.toString().toUpperCase().contains('FFE0') ||
-            service.uuid.toString().toUpperCase().contains('FFE1') ||
-            service.uuid.toString().toUpperCase().contains('00001800') ||
-            service.uuid.toString().toUpperCase().contains('00001801')) {
-          printerService = service;
-
-          // Look for printer characteristic
-          for (BluetoothCharacteristic characteristic
-              in service.characteristics) {
-            print('🔍 Found characteristic: ${characteristic.uuid}');
-            if (characteristic.properties.write ||
-                characteristic.properties.writeWithoutResponse) {
-              printerCharacteristic = characteristic;
-              break;
-            }
-          }
-          break;
-        }
-      }
-
-      if (printerCharacteristic == null) {
-        // If no specific printer service found, try the first writable characteristic
-        for (BluetoothService service in services) {
-          for (BluetoothCharacteristic characteristic
-              in service.characteristics) {
-            if (characteristic.properties.write ||
-                characteristic.properties.writeWithoutResponse) {
-              printerCharacteristic = characteristic;
-              printerService = service;
-              break;
-            }
-          }
-          if (printerCharacteristic != null) break;
-        }
-      }
-
-      if (printerCharacteristic == null) {
-        throw Exception('No writable characteristic found for printing');
-      }
-
-      print('✅ Found printer characteristic: ${printerCharacteristic.uuid}');
-
-      // Generate print content (without business name, as it will be handled by print service)
-      String printContent = _generateBillContent();
-      
-      // Generate print bytes with business name and logo using the print service
-      List<int> printData = await PrintService.generatePrintBytesWithLogo(
-        businessName: businessName ?? 'Business Name',
-        content: printContent,
-      );
-
-      // Send data to printer
-      await _sendDataInChunks(printerCharacteristic, printData);
-
-      SnackbarManager.showSuccess(
-        context,
-        message: 'Bill printed successfully!',
-      );
-
-      print('✅ Print job completed successfully');
-    } catch (e) {
-      print('❌ ERROR: Failed to print: $e');
-      SnackbarManager.showError(context, message: 'Print failed: $e');
-    }
-  }
-
-  String _generateBillContent() {
-    StringBuffer content = StringBuffer();
-    int totalWidth = 32; // Total width for alignment
     
-    // Note: Business name is now handled by PrintService, so we skip it here
-
-    // Customer info
-    String customerStr = _selectedCustomer != null ? _selectedCustomer!.name : 'GUEST';
-    int customerSpace = totalWidth - customerStr.length - ('Customer:').length;
-    content.writeln('Customer:' + ' ' * customerSpace + customerStr); 
-
-    // Transaction ID
-    final transactionId = generateTransactionID();
-    String transactionIdLabel = 'Transaction ID:';
-    int transactionIdSpace = totalWidth - transactionIdLabel.length - transactionId.length;
-    content.writeln(transactionIdLabel + ' ' * transactionIdSpace + transactionId);
-
-    // Date and time
-    String dateTimeTitle = 'Printed at:';
-    String date = DateTime.now().toString().split(' ')[0];
-    String time = DateTime.now().toString().split(' ')[1].split('.')[0];
-    int dateTimeTotalSpaces =
-        (totalWidth - 1 - dateTimeTitle.length - date.length - time.length);
-    content.writeln(
-      dateTimeTitle + ' ' * dateTimeTotalSpaces + date + ' ' + time,
-    );
-    // content.writeln();
-
-    // Items
-    content.writeln('-' * totalWidth);
-    for (var item in _cartItems) {
-      // Item name (left-aligned)
-      String? batchNoStr = '';
-      if (item.batchNumber != null) {
-        batchNoStr = '-${item.batchNumber}';
-      }
-
-      String displayNameStr = item.itemDisplayName + batchNoStr;
-      String totalStr = item.totalPrice.toStringAsFixed(2);
-      int displayNameSpace =
-          totalWidth - displayNameStr.length ;
-      content.writeln(displayNameStr + ' ' * displayNameSpace );
-
-      // Quantity and price (left-aligned)
-      String qtyPriceStr = '(${item.quantity} x ${item.salesPrice})';
-      int qtyPriceSpace = totalWidth - qtyPriceStr.length - totalStr.length;
-      content.writeln(qtyPriceStr + ' ' * qtyPriceSpace + totalStr);
-    }
-
-    // Totals
-    content.writeln('-' * totalWidth);
-    String totalLabel = 'Total:';
-    String total = _cartItemsTotal.toStringAsFixed(2);
-    int totalSpace = totalWidth - totalLabel.length - total.length;
-    content.writeln(totalLabel + ' ' * totalSpace + total);
-    content.writeln();
-
-    content.writeln('Thank you for your purchase!');
-    content.writeln('Software by JSoft');
-
-    return content.toString();
-  }
-
-  List<int> _convertToPrintData(String content) {
-    // Split content into sections
-    List<String> lines = content.split('\n');
-    
-    // Add ESC/POS commands for thermal printer
-    List<int> printData = [];
-
-    // Initialize printer
-    printData.addAll([0x1B, 0x40]); // ESC @ - Initialize printer
-
-    // Find business name line and thank you section
-    int businessNameIndex = -1;
-    int thankYouIndex = -1;
-    String businessNameText = businessName ?? 'Business Name';
-    
-    for (int i = 0; i < lines.length; i++) {
-      String line = lines[i].trim();
-      // Business name is typically after the first empty line
-      if (businessNameIndex == -1 && line.isNotEmpty && 
-          (line == businessNameText || line.contains(businessNameText))) {
-        businessNameIndex = i;
-      }
-      // Thank you section
-      if (line.contains('Thank you for your purchase!')) {
-        thankYouIndex = i;
-      }
-    }
-
-    // Process each line with appropriate alignment
-    for (int i = 0; i < lines.length; i++) {
-      String line = lines[i];
-      
-      // Center business name
-      if (i == businessNameIndex) {
-        printData.addAll([0x1B, 0x61, 0x01]); // ESC a 1 - Center alignment
-        printData.addAll((line + '\n').codeUnits);
-        printData.addAll([0x1B, 0x61, 0x00]); // ESC a 0 - Left alignment
-      }
-      // Center thank you section (both "Thank you" and "Software by" lines)
-      else if (thankYouIndex != -1 && i >= thankYouIndex && 
-               (line.trim().contains('Thank you') || line.trim().contains('Software by'))) {
-        if (i == thankYouIndex) {
-          printData.addAll([0x1B, 0x61, 0x01]); // ESC a 1 - Center alignment
-        }
-        printData.addAll((line + '\n').codeUnits);
-        // Switch back to left alignment after "Software by" line
-        if (line.trim().contains('Software by')) {
-          printData.addAll([0x1B, 0x61, 0x00]); // ESC a 0 - Left alignment
-        }
-      }
-      // Left align everything else
-      else {
-        printData.addAll((line + '\n').codeUnits);
-      }
-    }
-
-    // Add line feeds and cut
-    printData.addAll([0x0A, 0x0A, 0x0A]); // Line feeds
-    printData.addAll([0x1D, 0x56, 0x00]); // GS V 0 - Full cut
-
-    return printData;
-  }
-
-  Future<void> _sendDataInChunks(
-    BluetoothCharacteristic characteristic,
-    List<int> data,
-  ) async {
-    // Use a safe chunk size that works with most Bluetooth thermal printers
-    // The error shows max: 237 bytes, so we use 200 bytes as a safe default
-    // This leaves room for any protocol overhead
-    int chunkSize = 200;
-
-    int totalChunks = (data.length / chunkSize).ceil();
-    int chunkNumber = 0;
-
-    for (int i = 0; i < data.length; i += chunkSize) {
-      int end = (i + chunkSize < data.length) ? i + chunkSize : data.length;
-      List<int> chunk = data.sublist(i, end);
-      chunkNumber++;
-
-      // Log progress every 10 chunks or for the first/last chunk
-      if (chunkNumber == 1 || chunkNumber % 10 == 0 || chunkNumber == totalChunks) {
-        print('📤 Sending chunk $chunkNumber/$totalChunks: ${chunk.length} bytes');
-      }
-
+    // Check if device exists and is actually connected
+    bool isConnected = false;
+    if (connectedDevice != null) {
       try {
-        if (characteristic.properties.writeWithoutResponse) {
-          await characteristic.write(chunk, withoutResponse: true);
-          // Minimal delay for writeWithoutResponse to prevent buffer overflow
-          if (i + chunkSize < data.length) {
-            await Future.delayed(const Duration(milliseconds: 3));
+        BluetoothConnectionState connectionState =
+            await connectedDevice.connectionState.first;
+        isConnected = connectionState == BluetoothConnectionState.connected;
+      } catch (e) {
+        print('❌ Error checking connection state: $e');
+        isConnected = false;
+      }
+    }
+    
+    if (!isConnected) {
+      // If printer is not connected, show transaction success dialog and print dialog
+      _showTransactionSuccessDialog();
+      // Open print dialog after a short delay to allow transaction dialog to appear first
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _showPrintDialog();
+      });
+      return;
+    }
+
+    // Print using saved cart data
+    await BillPrinterService.printBill(
+      context: context,
+      cartItems: _savedCartItems!,
+      customer: _savedCustomer,
+      total: _savedTotal!,
+      cashPayment: _savedCashPayment,
+      cardPayment: _savedCardPayment,
+      bankPayment: _savedBankPayment,
+      voucherPayment: _savedVoucherPayment,
+      chequePayment: _savedChequePayment,
+      balance: _savedBalance ?? 0.0,
+      orderDate: _savedOrderDate,
+      businessName: businessName,
+      contactNumber: contactNumber,
+      address: address,
+      onSuccess: () {
+        // Clear cart after successful print
+        setState(() {
+          _selectedCustomer = null;
+          _cartItems = [];
+          _selectedItem = null;
+          _selectedInventory = null;
+          _selectedQuantity = 1;
+          _quantityController.text = '$_selectedQuantity';
+        });
+        
+        // Clear saved data
+        _savedCartItems = null;
+        _savedCustomer = null;
+        _savedTotal = null;
+        _savedCashPayment = null;
+        _savedCardPayment = null;
+        _savedBankPayment = null;
+        _savedVoucherPayment = null;
+        _savedChequePayment = null;
+        _savedBalance = null;
+        _savedOrderDate = null;
+      },
+      onError: () {
+        // Clear cart even if printing fails
+        setState(() {
+          _selectedCustomer = null;
+          _cartItems = [];
+          _selectedItem = null;
+          _selectedInventory = null;
+          _selectedQuantity = 1;
+          _quantityController.text = '$_selectedQuantity';
+        });
+      },
+    );
+  }
+
+  Future<void> _showTransactionSuccessDialog() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return TransactionSuccessDialog(
+          onPrintReceipt: () async {
+            await _handlePrintReceipt(dialogContext);
+          },
+          onNewInvoice: () {
+            // Clear saved data
+            _savedCartItems = null;
+            _savedCustomer = null;
+            _savedTotal = null;
+            _savedCashPayment = null;
+            _savedCardPayment = null;
+            _savedBankPayment = null;
+            _savedVoucherPayment = null;
+            _savedChequePayment = null;
+            _savedBalance = null;
+            
+            // Clear cart fields after clicking New Invoice
+            setState(() {
+              _selectedCustomer = null;
+              _cartItems = [];
+              _selectedItem = null;
+              _selectedInventory = null;
+              _selectedQuantity = 1;
+              _quantityController.text = '$_selectedQuantity';
+            });
+            
+            // Close dialog after clearing fields
+            Navigator.of(dialogContext).pop();
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handlePrintReceipt(BuildContext dialogContext) async {
+    // Check if device is connected
+    BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
+    
+    // Check if device exists and is actually connected
+    bool isConnected = false;
+    if (connectedDevice != null) {
+      try {
+        BluetoothConnectionState connectionState =
+            await connectedDevice.connectionState.first;
+        isConnected = connectionState == BluetoothConnectionState.connected;
+      } catch (e) {
+        print('❌ Error checking connection state: $e');
+        isConnected = false;
+      }
+    }
+    
+    if (!isConnected) {
+      // Show print connection dialog (this will open on top of the transaction dialog)
+      await _showPrintDialog();
+      // After print dialog closes, the transaction dialog should still be open
+      // Check again if device is connected
+      connectedDevice = PrintDialog.getConnectedDevice();
+      if (connectedDevice == null) {
+        if (dialogContext.mounted) {
+          SnackbarManager.showError(
+            dialogContext,
+            message: 'Please connect a printer to print the receipt.',
+          );
+        }
+        return; // User didn't connect a device, dialog remains open
+      }
+      
+      // Verify connection state again
+      try {
+        BluetoothConnectionState connectionState =
+            await connectedDevice.connectionState.first;
+        if (connectionState != BluetoothConnectionState.connected) {
+          if (dialogContext.mounted) {
+            SnackbarManager.showError(
+              dialogContext,
+              message: 'Printer is not connected. Please connect and try again.',
+            );
           }
-        } else {
-          await characteristic.write(chunk);
-          // Slightly longer delay when waiting for response
-          if (i + chunkSize < data.length) {
-            await Future.delayed(const Duration(milliseconds: 10));
-          }
+          return; // Dialog remains open
         }
       } catch (e) {
-        // If write fails due to size, try with smaller chunks
-        if (e.toString().contains('data longer than allowed') && chunkSize > 20) {
-          print('⚠️ Chunk too large, retrying with smaller size...');
-          // Reduce chunk size and retry
-          chunkSize = (chunkSize * 0.5).round().clamp(20, 200);
-          print('🔄 Reduced chunk size to: $chunkSize bytes');
-          // Retry from current position with new chunk size
-          i -= (end - i); // Go back to start of failed chunk
-          chunkNumber--; // Decrement to retry this chunk
-          continue;
+        print('❌ Error checking connection state: $e');
+        if (dialogContext.mounted) {
+          SnackbarManager.showError(
+            dialogContext,
+            message: 'Failed to verify printer connection.',
+          );
         }
-        print('❌ ERROR: Failed to send chunk: $e');
-        throw Exception('Failed to send data chunk: $e');
+        return; // Dialog remains open
       }
     }
 
-    print('✅ All data chunks sent successfully');
+    // Print using saved cart data
+    await BillPrinterService.printBill(
+      context: dialogContext,
+      cartItems: _savedCartItems!,
+      customer: _savedCustomer,
+      total: _savedTotal!,
+      cashPayment: _savedCashPayment,
+      cardPayment: _savedCardPayment,
+      bankPayment: _savedBankPayment,
+      voucherPayment: _savedVoucherPayment,
+      chequePayment: _savedChequePayment,
+      balance: _savedBalance ?? 0.0,
+      orderDate: _savedOrderDate,
+      businessName: businessName,
+      contactNumber: contactNumber,
+      address: address,
+    );
+    // Dialog remains open after printing
   }
+
 
   List<Map<String, dynamic>> _buildLineItems() {
     final List<Map<String, dynamic>> lineItems = [];
@@ -1786,6 +1711,18 @@ class _HomePageState extends State<HomePage> {
       final chequePayment = chequePaymentAmount.toStringAsFixed(2);
       final voucherPayment = voucherPaymentAmount.toStringAsFixed(2);
 
+      // Save payment data and cart data for printing
+      _savedCartItems = List.from(_cartItems);
+      _savedCustomer = _selectedCustomer;
+      _savedTotal = _cartItemsTotal;
+      _savedCashPayment = cashPaymentAmount;
+      _savedCardPayment = cardPaymentAmount;
+      _savedBankPayment = bankPaymentAmount;
+      _savedVoucherPayment = voucherPaymentAmount;
+      _savedChequePayment = chequePaymentAmount;
+      _savedBalance = balance;
+      _savedOrderDate = orderDate;
+
       final requestBody = {
         "activeToken": activeToken,
         "transactionId": transactionId,
@@ -1845,22 +1782,17 @@ class _HomePageState extends State<HomePage> {
       final jsonResponse = response.data;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Clear cart after successful submission
-        setState(() {
-          _selectedCustomer = null;
-          _cartItems = [];
-          _selectedItem = null;
-          _selectedInventory = null;
-          _selectedQuantity = 1;
-          _quantityController.text = '$_selectedQuantity';
-        });
-
-        SnackbarManager.showSuccess(
-          context,
-          message: 'Transaction completed successfully!',
-        );
+        // Cart data is already saved before transaction submission
 
         print('✅ Transaction completed successfully');
+
+        if (_quickInvoice) {
+          // Print bill immediately if quick invoice is enabled
+          _printBillImmediately();
+        } else {
+          // Show transaction success dialog if quick invoice is disabled
+          _showTransactionSuccessDialog();
+        }
       } else {
         final errorMessage =
             jsonResponse?['status_description'] ??
@@ -2750,7 +2682,17 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: ElevatedButton.icon(
-                              onPressed: _printBill,
+                              onPressed: () async {
+                                await BillPrinterService.printBill(
+                                  context: context,
+                                  cartItems: _cartItems,
+                                  customer: _selectedCustomer,
+                                  total: _cartItemsTotal,
+                                  businessName: businessName,
+                                  contactNumber: contactNumber,
+                                  address: address,
+                                );
+                              },
                               icon: Icon(Icons.print),
                               label: Text('Print'),
                               style: ElevatedButton.styleFrom(
