@@ -8,6 +8,7 @@ import 'package:lite/model/cart_item.dart';
 import 'package:lite/model/customer.dart';
 import 'package:lite/model/item.dart';
 import 'package:lite/screens/login_page.dart';
+import 'package:lite/screens/overview_page.dart';
 import 'package:lite/screens/transaction_page.dart';
 import 'package:lite/screens/pending_transaction_page.dart';
 import 'package:lite/utils/app_configs.dart';
@@ -1951,6 +1952,11 @@ class _HomePageState extends State<HomePage> {
                   context,
                   MaterialPageRoute(builder: (context) => const PendingTransactionPage()),
                 );
+              }else if (value == 'overview') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const OverviewPage()),
+                );
               } else if (value == 'fingerprint_device') {
                 _showFingerprintDeviceDialog();
               }
@@ -1974,6 +1980,16 @@ class _HomePageState extends State<HomePage> {
                       Icon(Icons.payments_outlined, size: 20, color: Colors.orange),
                       SizedBox(width: 8),
                       Text('Pending Payments'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'overview',
+                  child: Row(
+                    children: [
+                      Icon(Icons.bar_chart, size: 20, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Text('Overview'),
                     ],
                   ),
                 ),
@@ -3142,6 +3158,7 @@ class _HomePageState extends State<HomePage> {
                           //     ),
                           //   ),
                           // ),
+
                           // const SizedBox(width: 12),
                           // Expanded(
                           //   child: ElevatedButton.icon(
