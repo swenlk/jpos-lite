@@ -88,6 +88,9 @@ class _HomePageState extends State<HomePage> {
   late TextEditingController _discountPercentageController;
   late TextEditingController _discountAmountController;
 
+  // Tile layout search
+  late TextEditingController _tileSearchController;
+
   @override
   void initState() {
     // TODO: implement initState
@@ -96,6 +99,7 @@ class _HomePageState extends State<HomePage> {
     _otpController = TextEditingController();
     _discountPercentageController = TextEditingController(text: '0');
     _discountAmountController = TextEditingController(text: '0');
+    _tileSearchController = TextEditingController();
     loadUserData();
     _loadCustomersFromSharedPreferences();
     _loadItemsFromSharedPreferences();
@@ -107,6 +111,7 @@ class _HomePageState extends State<HomePage> {
     _otpController.dispose();
     _discountPercentageController.dispose();
     _discountAmountController.dispose();
+    _tileSearchController.dispose();
     // Clean up any resources or cancel ongoing operations here
     super.dispose();
   }
@@ -614,16 +619,18 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                item.displayName,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+              Flexible(
+                child: Text(
+                  item.displayName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-              // const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -632,11 +639,14 @@ class _HomePageState extends State<HomePage> {
                     size: 14,
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    'Rs. ${item.salesPrice ?? '0.0'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      'Rs. ${item.salesPrice ?? '0.0'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -664,16 +674,18 @@ class _HomePageState extends State<HomePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                item.displayName,
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+              Flexible(
+                child: Text(
+                  item.displayName,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
               ),
-              // const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
                 'Batch ${inventory.batchNumber}',
                 style: TextStyle(
@@ -681,7 +693,7 @@ class _HomePageState extends State<HomePage> {
                   color: Colors.grey[700],
                 ),
               ),
-              // const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -690,16 +702,19 @@ class _HomePageState extends State<HomePage> {
                     size: 12,
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    'Rs. ${inventory.salesPrice}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                  Flexible(
+                    child: Text(
+                      'Rs. ${inventory.salesPrice}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
               ),
-              // const SizedBox(height: 4),
+              const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -708,10 +723,13 @@ class _HomePageState extends State<HomePage> {
                     size: 12,
                   ),
                   const SizedBox(width: 4),
-                  Text(
-                    'Stock: ${inventory.stock}',
-                    style: TextStyle(
-                      fontSize: 11,
+                  Flexible(
+                    child: Text(
+                      'Stock: ${inventory.stock}',
+                      style: TextStyle(
+                        fontSize: 11,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                 ],
@@ -2446,62 +2464,134 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ] else ...[
                           // Tile mode: Show items as cards
-                          LayoutBuilder(
-                            builder: (context, constraints) {
-                              if (_items.isEmpty) {
-                                return Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(32.0),
-                                    child: Text(
-                                      'No items available',
-                                      style: TextStyle(fontSize: 16),
-                                    ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Search input field
+                              SizedBox(
+                                height: 40,
+                                child: TextField(
+                                  controller: _tileSearchController,
+                                  style: TextStyle(fontSize: 14),
+                                  decoration: InputDecoration(
+                                    hintText: 'Search items...',
+                                    hintStyle: TextStyle(fontSize: 14),
+                                    prefixIcon: Icon(Icons.search, size: 20),
+                                    suffixIcon: _tileSearchController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: Icon(Icons.close, size: 20),
+                                            onPressed: () {
+                                              setState(() {
+                                                _tileSearchController.clear();
+                                              });
+                                            },
+                                          )
+                                        : null,
+                                    border: OutlineInputBorder(),
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    isDense: true,
                                   ),
-                                );
-                              }
-                              
-                              // Build a list of card data for efficient access
-                              List<_TileCardData> cardData = [];
-                              for (var item in _items) {
-                                if (item.inventoried) {
-                                  // For inventoried items, only load if inventory array has objects
-                                  if (item.inventory.isNotEmpty) {
-                                    // Create a card for each inventory entry, but skip if stock is 0
-                                    for (var inventory in item.inventory) {
-                                      final stock = double.tryParse(inventory.stock) ?? 0.0;
-                                      if (stock > 0) {
-                                        cardData.add(_TileCardData(item: item, inventory: inventory));
+                                  onChanged: (value) {
+                                    setState(() {
+                                      // Trigger rebuild to filter items and update clear icon
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Items grid
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  if (_items.isEmpty) {
+                                    return Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(32.0),
+                                        child: Text(
+                                          'No items available',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  
+                                  final searchText = _tileSearchController.text.toLowerCase();
+                                  
+                                  // Build a list of card data for efficient access
+                                  List<_TileCardData> cardData = [];
+                                  for (var item in _items) {
+                                    // Filter by displayName if search text is provided
+                                    if (searchText.isNotEmpty && 
+                                        !item.displayName.toLowerCase().contains(searchText)) {
+                                      continue; // Skip items that don't match search
+                                    }
+                                    
+                                    if (item.inventoried) {
+                                      // For inventoried items, only load if inventory array has objects
+                                      if (item.inventory.isNotEmpty) {
+                                        // Create a card for each inventory entry, but skip if stock is 0
+                                        for (var inventory in item.inventory) {
+                                          final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                          if (stock > 0) {
+                                            cardData.add(_TileCardData(item: item, inventory: inventory));
+                                          }
+                                        }
                                       }
+                                      // If inventory is empty, skip this item (don't add to cardData)
+                                    } else {
+                                      // For non-inventoried items, create a single card with displayName and salesPrice
+                                      cardData.add(_TileCardData(item: item, inventory: null));
                                     }
                                   }
-                                  // If inventory is empty, skip this item (don't add to cardData)
-                                } else {
-                                  // For non-inventoried items, create a single card with displayName and salesPrice
-                                  cardData.add(_TileCardData(item: item, inventory: null));
-                                }
-                              }
+                                  
+                                  // Check if no items match the search
+                                  if (cardData.isEmpty) {
+                                    return Center(
+                                      child: Padding(
+                                        padding: const EdgeInsets.all(32.0),
+                                        child: Text(
+                                          searchText.isNotEmpty 
+                                              ? 'No items found matching "$searchText"'
+                                              : 'No items available',
+                                          style: TextStyle(fontSize: 16),
+                                        ),
+                                      ),
+                                    );
+                                  }
                               
-                              // Calculate card width to ensure at least 3 cards per row
-                              const spacing = 6.0;
-                              const minCardsPerRow = 3;
-                              final availableWidth = constraints.maxWidth;
-                              // Calculate width for exactly 3 cards: (availableWidth - (spacing * 2)) / 3
-                              // This ensures at least 3 cards per row
-                              final cardWidth = (availableWidth - (spacing * (minCardsPerRow - 1))) / minCardsPerRow;
-                              
-                              return Wrap(
-                                spacing: spacing,
-                                runSpacing: spacing,
-                                children: cardData.map((data) {
-                                  return SizedBox(
-                                    width: cardWidth,
-                                    child: data.inventory != null
-                                        ? _buildInventoryTileCard(data.item, data.inventory!)
-                                        : _buildItemTileCard(data.item),
+                                  // Calculate card width to ensure at least 3 cards per row
+                                  const spacing = 6.0;
+                                  const minCardsPerRow = 3;
+                                  final availableWidth = constraints.maxWidth;
+                                  // Calculate width for exactly 3 cards: (availableWidth - (spacing * 2)) / 3
+                                  // This ensures at least 3 cards per row
+                                  final cardWidth = (availableWidth - (spacing * (minCardsPerRow - 1))) / minCardsPerRow;
+                                  
+                                  // Use MediaQuery to get available height and constrain the scroll view
+                                  final screenHeight = MediaQuery.of(context).size.height;
+                                  final maxHeight = screenHeight * 0.5; // Use 50% of screen height
+                                  
+                                  return ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      maxHeight: maxHeight,
+                                    ),
+                                    child: SingleChildScrollView(
+                                      child: Wrap(
+                                        spacing: spacing,
+                                        runSpacing: spacing,
+                                        children: cardData.map((data) {
+                                          return SizedBox(
+                                            width: cardWidth,
+                                            child: data.inventory != null
+                                                ? _buildInventoryTileCard(data.item, data.inventory!)
+                                                : _buildItemTileCard(data.item),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
                                   );
-                                }).toList(),
-                              );
-                            },
+                                },
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 16),
                         ],
@@ -3020,38 +3110,38 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final discountPercentage = _isPercentageMode 
-                                    ? double.tryParse(_discountPercentageController.text) ?? 0.0 
-                                    : null;
-                                await BillPrinterService.printBill(
-                                  context: context,
-                                  cartItems: _cartItems,
-                                  customer: _selectedCustomer,
-                                  total: _finalTotal,
-                                  subtotal: _cartItemsTotal,
-                                  discountPercentage: discountPercentage,
-                                  discountAmount: _discountAmount,
-                                  isPercentageMode: _isPercentageMode,
-                                  businessName: businessName,
-                                  contactNumber: contactNumber,
-                                  address: address,
-                                );
-                              },
-                              icon: Icon(Icons.print),
-                              label: Text('Print'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ),
+                          // Expanded(
+                          //   child: ElevatedButton.icon(
+                          //     onPressed: () async {
+                          //       final discountPercentage = _isPercentageMode
+                          //           ? double.tryParse(_discountPercentageController.text) ?? 0.0
+                          //           : null;
+                          //       await BillPrinterService.printBill(
+                          //         context: context,
+                          //         cartItems: _cartItems,
+                          //         customer: _selectedCustomer,
+                          //         total: _finalTotal,
+                          //         subtotal: _cartItemsTotal,
+                          //         discountPercentage: discountPercentage,
+                          //         discountAmount: _discountAmount,
+                          //         isPercentageMode: _isPercentageMode,
+                          //         businessName: businessName,
+                          //         contactNumber: contactNumber,
+                          //         address: address,
+                          //       );
+                          //     },
+                          //     icon: Icon(Icons.print),
+                          //     label: Text('Print'),
+                          //     style: ElevatedButton.styleFrom(
+                          //       backgroundColor: Colors.blue,
+                          //       foregroundColor: Colors.white,
+                          //       padding: EdgeInsets.symmetric(vertical: 14),
+                          //       shape: RoundedRectangleBorder(
+                          //         borderRadius: BorderRadius.circular(8),
+                          //       ),
+                          //     ),
+                          //   ),
+                          // ),
                           // const SizedBox(width: 12),
                           // Expanded(
                           //   child: ElevatedButton.icon(
