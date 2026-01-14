@@ -45,9 +45,23 @@ class TransactionDetailsDialog extends StatefulWidget {
 
 class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
   bool _isLoading = false;
+  String? _businessType;
 
   Transaction get transaction => widget.transaction;
   String Function(String) get formatOrderDate => widget.formatOrderDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBusinessType();
+  }
+
+  Future<void> _loadBusinessType() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _businessType = prefs.getString('businessType');
+    });
+  }
 
   bool _shouldDisplayValue(dynamic value) {
     if (value == null) return false;
@@ -95,6 +109,18 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
       }
     }
     return null;
+  }
+
+  String _getDiscountLabel(Transaction transaction) {
+    // Add percentage if available and greater than 0
+    if (transaction.totalDiscountPercentage != null && 
+        transaction.totalDiscountPercentage!.isNotEmpty) {
+      final percentage = double.tryParse(transaction.totalDiscountPercentage!) ?? 0.0;
+      if (percentage > 0) {
+        return 'Discount ${percentage.toStringAsFixed(0)}%';
+      }
+    }
+    return 'Discount';
   }
 
   Future<void> _completePartialTransaction({
@@ -427,7 +453,7 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                                   ),
                                 ],
                               ),
-                              if (_shouldDisplayValue(transaction.status))
+                              if (_shouldDisplayValue(transaction.status) && _businessType == 'ONLINE_FOOD')
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
@@ -529,7 +555,10 @@ class _TransactionDetailsDialogState extends State<TransactionDetailsDialog> {
                           if (_shouldDisplayValue(transaction.subTotal))
                             _buildSummaryRow('Subtotal', 'Rs. ${transaction.subTotal}'),
                           if (_shouldDisplayValue(transaction.discount))
-                            _buildSummaryRow('Discount', '-Rs. ${transaction.discount}'),
+                            _buildSummaryRow(
+                              _getDiscountLabel(transaction),
+                              'Rs. ${transaction.discount}',
+                            ),
                           if (_shouldDisplayValue(transaction.vatAmount))
                             _buildSummaryRow('VAT', 'Rs. ${transaction.vatAmount}'),
                           if (_shouldDisplayValue(transaction.total)) ...[

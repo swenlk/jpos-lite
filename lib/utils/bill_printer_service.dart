@@ -199,6 +199,45 @@ class BillPrinterService {
 
     // Totals
     content.writeln('-' * totalWidth);
+    
+    // Subtotal
+    String subtotalLabel = 'Subtotal:';
+    String subtotalStr = transaction.subTotal;
+    int subtotalSpace = totalWidth - subtotalLabel.length - subtotalStr.length;
+    content.writeln(subtotalLabel + ' ' * subtotalSpace + subtotalStr);
+    
+    // Discount (only show if > 0)
+    final discountAmount = double.tryParse(transaction.discount) ?? 0.0;
+    if (discountAmount > 0) {
+      String discountLine;
+      // Check if percentage is available and greater than 0
+      if (transaction.totalDiscountPercentage != null && 
+          transaction.totalDiscountPercentage!.isNotEmpty) {
+        final percentage = double.tryParse(transaction.totalDiscountPercentage!) ?? 0.0;
+        if (percentage > 0) {
+          // Format: "Discount 5% 120.00"
+          String discountLabel = 'Discount ${percentage.toStringAsFixed(0)}%:';
+          String discountStr = discountAmount.toStringAsFixed(2);
+          int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+          discountLine = discountLabel + ' ' * discountSpace + discountStr;
+        } else {
+          // Format: "Discount 120.00"
+          String discountLabel = 'Discount:';
+          String discountStr = discountAmount.toStringAsFixed(2);
+          int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+          discountLine = discountLabel + ' ' * discountSpace + discountStr;
+        }
+      } else {
+        // Format: "Discount 120.00"
+        String discountLabel = 'Discount:';
+        String discountStr = discountAmount.toStringAsFixed(2);
+        int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+        discountLine = discountLabel + ' ' * discountSpace + discountStr;
+      }
+      content.writeln(discountLine);
+    }
+    
+    // Total
     String totalLabel = 'Total:';
     String totalStr = transaction.total;
     int totalSpace = totalWidth - totalLabel.length - totalStr.length;
@@ -260,6 +299,10 @@ class BillPrinterService {
     required List<CartItem> cartItems,
     Customer? customer,
     required double total,
+    double? subtotal,
+    double? discountPercentage,
+    double? discountAmount,
+    bool? isPercentageMode,
     double? cashPayment,
     double? cardPayment,
     double? bankPayment,
@@ -313,6 +356,38 @@ class BillPrinterService {
 
     // Totals
     content.writeln('-' * totalWidth);
+    
+    // Subtotal
+    final finalSubtotal = subtotal ?? total;
+    String subtotalLabel = 'Subtotal:';
+    String subtotalStr = finalSubtotal.toStringAsFixed(2);
+    int subtotalSpace = totalWidth - subtotalLabel.length - subtotalStr.length;
+    content.writeln(subtotalLabel + ' ' * subtotalSpace + subtotalStr);
+    
+    // Discount (only show if > 0)
+    final finalIsPercentageMode = isPercentageMode ?? false;
+    final finalDiscountAmount = discountAmount ?? 0.0;
+    final finalDiscountPercentage = discountPercentage ?? 0.0;
+    
+    if (finalDiscountAmount > 0) {
+      String discountLine;
+      if (finalIsPercentageMode && finalDiscountPercentage > 0) {
+        // Format: "Discount 5% 120.00"
+        String discountLabel = 'Discount ${finalDiscountPercentage.toStringAsFixed(0)}%:';
+        String discountStr = finalDiscountAmount.toStringAsFixed(2);
+        int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+        discountLine = discountLabel + ' ' * discountSpace + discountStr;
+      } else {
+        // Format: "Discount 120.00"
+        String discountLabel = 'Discount:';
+        String discountStr = finalDiscountAmount.toStringAsFixed(2);
+        int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+        discountLine = discountLabel + ' ' * discountSpace + discountStr;
+      }
+      content.writeln(discountLine);
+    }
+    
+    // Total
     String totalLabel = 'Total:';
     String totalStr = total.toStringAsFixed(2);
     int totalSpace = totalWidth - totalLabel.length - totalStr.length;
@@ -561,6 +636,10 @@ class BillPrinterService {
     required List<CartItem> cartItems,
     Customer? customer,
     required double total,
+    double? subtotal,
+    double? discountPercentage,
+    double? discountAmount,
+    bool? isPercentageMode,
     double? cashPayment,
     double? cardPayment,
     double? bankPayment,
@@ -623,6 +702,10 @@ class BillPrinterService {
         cartItems: cartItems,
         customer: customer,
         total: total,
+        subtotal: subtotal,
+        discountPercentage: discountPercentage,
+        discountAmount: discountAmount,
+        isPercentageMode: isPercentageMode,
         cashPayment: cashPayment,
         cardPayment: cardPayment,
         bankPayment: bankPayment,

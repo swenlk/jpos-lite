@@ -67,6 +67,10 @@ class _HomePageState extends State<HomePage> {
   List<CartItem>? _savedCartItems;
   Customer? _savedCustomer;
   double? _savedTotal;
+  double? _savedSubtotal;
+  double? _savedDiscountPercentage;
+  double? _savedDiscountAmount;
+  bool? _savedIsPercentageMode;
   double? _savedCashPayment;
   double? _savedCardPayment;
   double? _savedBankPayment;
@@ -79,12 +83,19 @@ class _HomePageState extends State<HomePage> {
   String? _receivedOtp;
   late TextEditingController _otpController;
 
+  // Discount
+  bool _isPercentageMode = true; // true for %, false for $
+  late TextEditingController _discountPercentageController;
+  late TextEditingController _discountAmountController;
+
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
     _quantityController = TextEditingController(text: '$_selectedQuantity');
     _otpController = TextEditingController();
+    _discountPercentageController = TextEditingController(text: '0');
+    _discountAmountController = TextEditingController(text: '0');
     loadUserData();
     _loadCustomersFromSharedPreferences();
     _loadItemsFromSharedPreferences();
@@ -94,6 +105,8 @@ class _HomePageState extends State<HomePage> {
   void dispose() {
     _quantityController.dispose();
     _otpController.dispose();
+    _discountPercentageController.dispose();
+    _discountAmountController.dispose();
     // Clean up any resources or cancel ongoing operations here
     super.dispose();
   }
@@ -751,6 +764,9 @@ class _HomePageState extends State<HomePage> {
       _selectedInventory = null;
       _selectedQuantity = 1;
       _quantityController.text = '$_selectedQuantity';
+      _isPercentageMode = true;
+      _discountPercentageController.text = '0';
+      _discountAmountController.text = '0';
     });
     SnackbarManager.showSuccess(
       context,
@@ -760,6 +776,19 @@ class _HomePageState extends State<HomePage> {
 
   double get _cartItemsTotal {
     return _cartItems.fold(0.0, (sum, item) => sum + item.totalPrice);
+  }
+
+  double get _discountAmount {
+    if (_isPercentageMode) {
+      final percentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+      return (_cartItemsTotal * percentage) / 100.0;
+    } else {
+      return double.tryParse(_discountAmountController.text) ?? 0.0;
+    }
+  }
+
+  double get _finalTotal {
+    return _cartItemsTotal - _discountAmount;
   }
 
   String generateTransactionID() {
@@ -1334,7 +1363,7 @@ class _HomePageState extends State<HomePage> {
       barrierDismissible: true,
       builder: (BuildContext context) {
         return CheckoutDialog(
-          totalAmount: _cartItemsTotal,
+          totalAmount: _finalTotal,
           onComplete: (paidAmount, balance, paymentType, otherPaymentMethod, paymentReference, splitPayments) {
             _submitTransaction(
               paidAmount: paidAmount,
@@ -1383,6 +1412,10 @@ class _HomePageState extends State<HomePage> {
       cartItems: _savedCartItems!,
       customer: _savedCustomer,
       total: _savedTotal!,
+      subtotal: _savedSubtotal,
+      discountPercentage: _savedDiscountPercentage,
+      discountAmount: _savedDiscountAmount,
+      isPercentageMode: _savedIsPercentageMode,
       cashPayment: _savedCashPayment,
       cardPayment: _savedCardPayment,
       bankPayment: _savedBankPayment,
@@ -1408,6 +1441,10 @@ class _HomePageState extends State<HomePage> {
         _savedCartItems = null;
         _savedCustomer = null;
         _savedTotal = null;
+        _savedSubtotal = null;
+        _savedDiscountPercentage = null;
+        _savedDiscountAmount = null;
+        _savedIsPercentageMode = null;
         _savedCashPayment = null;
         _savedCardPayment = null;
         _savedBankPayment = null;
@@ -1440,26 +1477,23 @@ class _HomePageState extends State<HomePage> {
             await _handlePrintReceipt(dialogContext);
           },
           onNewInvoice: () {
+            // Clear all fields using _performClear
+            _performClear();
             // Clear saved data
             _savedCartItems = null;
             _savedCustomer = null;
             _savedTotal = null;
+            _savedSubtotal = null;
+            _savedDiscountPercentage = null;
+            _savedDiscountAmount = null;
+            _savedIsPercentageMode = null;
             _savedCashPayment = null;
             _savedCardPayment = null;
             _savedBankPayment = null;
             _savedVoucherPayment = null;
             _savedChequePayment = null;
             _savedBalance = null;
-            
-            // Clear cart fields after clicking New Invoice
-            setState(() {
-              _selectedCustomer = null;
-              _cartItems = [];
-              _selectedItem = null;
-              _selectedInventory = null;
-              _selectedQuantity = 1;
-              _quantityController.text = '$_selectedQuantity';
-            });
+            _savedOrderDate = null;
             
             // Close dialog after clearing fields
             Navigator.of(dialogContext).pop();
@@ -1533,6 +1567,10 @@ class _HomePageState extends State<HomePage> {
       cartItems: _savedCartItems!,
       customer: _savedCustomer,
       total: _savedTotal!,
+      subtotal: _savedSubtotal,
+      discountPercentage: _savedDiscountPercentage,
+      discountAmount: _savedDiscountAmount,
+      isPercentageMode: _savedIsPercentageMode,
       cashPayment: _savedCashPayment,
       cardPayment: _savedCardPayment,
       bankPayment: _savedBankPayment,
@@ -1645,7 +1683,7 @@ class _HomePageState extends State<HomePage> {
 
       final transactionId = generateTransactionID();
       final subTotal = _cartItemsTotal.toStringAsFixed(2);
-      final total = _cartItemsTotal.toStringAsFixed(2);
+      final total = _finalTotal.toStringAsFixed(2);
       final now = DateTime.now();
       final orderDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
@@ -1714,7 +1752,15 @@ class _HomePageState extends State<HomePage> {
       // Save payment data and cart data for printing
       _savedCartItems = List.from(_cartItems);
       _savedCustomer = _selectedCustomer;
-      _savedTotal = _cartItemsTotal;
+      _savedTotal = _finalTotal;
+      _savedSubtotal = _cartItemsTotal;
+      _savedDiscountAmount = _discountAmount;
+      _savedIsPercentageMode = _isPercentageMode;
+      if (_isPercentageMode) {
+        _savedDiscountPercentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+      } else {
+        _savedDiscountPercentage = null;
+      }
       _savedCashPayment = cashPaymentAmount;
       _savedCardPayment = cardPaymentAmount;
       _savedBankPayment = bankPaymentAmount;
@@ -1723,15 +1769,36 @@ class _HomePageState extends State<HomePage> {
       _savedBalance = balance;
       _savedOrderDate = orderDate;
 
+      // Calculate discount values for request body
+      String discountValue = "0.00";
+      String? totalDiscountValue;
+      String? totalDiscountPercentage;
+      
+      if (_isPercentageMode) {
+        final percentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+        if (percentage != 0) {
+          final calculatedDiscount = _discountAmount;
+          totalDiscountPercentage = percentage.toStringAsFixed(2);
+          totalDiscountValue = calculatedDiscount.toStringAsFixed(2);
+          discountValue = calculatedDiscount.toStringAsFixed(2);
+        }
+      } else {
+        // Amount mode
+        final discountAmount = double.tryParse(_discountAmountController.text) ?? 0.0;
+        if (discountAmount != 0) {
+          discountValue = discountAmount.toStringAsFixed(2);
+        }
+      }
+
       final requestBody = {
         "activeToken": activeToken,
         "transactionId": transactionId,
         "transactionType": _selectedCustomer != null ? "CUSTOMER" : "GUEST",
         "customerId": _selectedCustomer != null ? _selectedCustomer!.id : "",
         "subTotal": subTotal,
-        "discount": "0.00",
-        "totalDiscountValue": null,
-        "totalDiscountPercentage": null,
+        "discount": discountValue,
+        "totalDiscountValue": totalDiscountValue,
+        "totalDiscountPercentage": totalDiscountPercentage,
         "total": total,
         "balance": balance.toStringAsFixed(2),
         "cardPayment": cardPayment,
@@ -2638,16 +2705,144 @@ class _HomePageState extends State<HomePage> {
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
-                                      'Total Amount:',
+                                      'Subtotal Amount:',
                                       style: TextStyle(
-                                        fontSize: 16,
+                                        fontSize: 14,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
                                     Text(
                                       'Rs. ${_cartItemsTotal.toStringAsFixed(2)}',
                                       style: TextStyle(
-                                        fontSize: 16,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xffd41818),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Text(
+                                  'Discount:',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                // Toggle button and input fields
+                                Row(
+                                  children: [
+                                    // Toggle button
+                                    Material(
+                                      color: _isPercentageMode 
+                                          ? Colors.blue[100] 
+                                          : Colors.green[100],
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: InkWell(
+                                        onTap: () {
+                                          setState(() {
+                                            _isPercentageMode = !_isPercentageMode;
+                                            if (_isPercentageMode) {
+                                              _discountAmountController.text = '0';
+                                            } else {
+                                              _discountPercentageController.text = '0';
+                                            }
+                                          });
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: _isPercentageMode 
+                                                  ? Colors.blue[300]! 
+                                                  : Colors.green[300]!,
+                                              width: 2,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            _isPercentageMode ? Icons.percent : Icons.attach_money,
+                                            color: _isPercentageMode 
+                                                ? Colors.blue[700] 
+                                                : Colors.green[700],
+                                            size: 24,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    // Input fields based on mode
+                                    if (_isPercentageMode) ...[
+                                      Expanded(
+                                        flex: 2,
+                                        child: TextField(
+                                          controller: _discountPercentageController,
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          decoration: InputDecoration(
+                                            labelText: 'Discount Percentage (%)',
+                                            hintText: '0',
+                                            border: OutlineInputBorder(),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          ),
+                                          onChanged: (value) {
+                                            setState(() {});
+                                          },
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        flex: 2,
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          decoration: BoxDecoration(
+                                            border: Border.all(color: Colors.grey),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'Rs. ${_discountAmount.toStringAsFixed(2)}',
+                                            style: TextStyle( 
+                                              fontSize: 14,
+                                            ),
+                                            textAlign: TextAlign.end,
+                                          ),
+                                        ),
+                                      ),
+                                    ] else ...[
+                                      Expanded(
+                                        child: TextField(
+                                          controller: _discountAmountController,
+                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          decoration: InputDecoration(
+                                            labelText: 'Discount Amount (Rs.)',
+                                            hintText: '0',
+                                            border: OutlineInputBorder(),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          ),
+                                          onChanged: (value) {
+                                            setState(() {});
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+
+                                const SizedBox(height: 16),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Total Amount:',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Rs. ${_finalTotal.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: 14,
                                         fontWeight: FontWeight.bold,
                                         color: Color(0xffd41818),
                                       ),
@@ -2659,6 +2854,151 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // Discount section
+                        // Card(
+                        //   color: Colors.grey[100],
+                        //   child: Padding(
+                        //     padding: EdgeInsets.all(16),
+                        //     child: Column(
+                        //       crossAxisAlignment: CrossAxisAlignment.start,
+                        //       children: [
+                        //         Text(
+                        //           'Discount:',
+                        //           style: TextStyle(
+                        //             fontSize: 16,
+                        //             fontWeight: FontWeight.bold,
+                        //           ),
+                        //         ),
+                        //         // Radio buttons
+                        //         Row(
+                        //           children: [
+                        //             Radio<String>(
+                        //               value: 'None',
+                        //               groupValue: _discountType,
+                        //               onChanged: (value) {
+                        //                 setState(() {
+                        //                   _discountType = value!;
+                        //                   _discountPercentageController.clear();
+                        //                   _discountAmountController.clear();
+                        //                 });
+                        //               },
+                        //             ),
+                        //             Text('None'),
+                        //             const SizedBox(width: 20),
+                        //             Radio<String>(
+                        //               value: 'Percentage',
+                        //               groupValue: _discountType,
+                        //               onChanged: (value) {
+                        //                 setState(() {
+                        //                   _discountType = value!;
+                        //                   _discountAmountController.clear();
+                        //                 });
+                        //               },
+                        //             ),
+                        //             Text('Percentage'),
+                        //             const SizedBox(width: 20),
+                        //             Radio<String>(
+                        //               value: 'Amount',
+                        //               groupValue: _discountType,
+                        //               onChanged: (value) {
+                        //                 setState(() {
+                        //                   _discountType = value!;
+                        //                   _discountPercentageController.clear();
+                        //                 });
+                        //               },
+                        //             ),
+                        //             Text('Amount'),
+                        //           ],
+                        //         ),
+                        //         // Conditional input fields
+                        //         if (_discountType == 'Percentage') ...[
+                        //           const SizedBox(height: 12),
+                        //           Row(
+                        //             children: [
+                        //               Expanded(
+                        //                 flex: 2,
+                        //                 child: TextField(
+                        //                   controller: _discountPercentageController,
+                        //                   keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        //                   decoration: InputDecoration(
+                        //                     labelText: 'Discount Percentage (%)',
+                        //                     border: OutlineInputBorder(),
+                        //                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        //                   ),
+                        //                   onChanged: (value) {
+                        //                     setState(() {});
+                        //                   },
+                        //                 ),
+                        //               ),
+                        //               const SizedBox(width: 12),
+                        //               Expanded(
+                        //                 flex: 2,
+                        //                 child: Container(
+                        //                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                        //                   decoration: BoxDecoration(
+                        //                     border: Border.all(color: Colors.grey),
+                        //                     borderRadius: BorderRadius.circular(4),
+                        //                   ),
+                        //                   child: Text(
+                        //                     'Discount: Rs. ${_discountAmount.toStringAsFixed(2)}',
+                        //                     style: TextStyle(
+                        //                       fontSize: 14,
+                        //                       fontWeight: FontWeight.w500,
+                        //                     ),
+                        //                   ),
+                        //                 ),
+                        //               ),
+                        //             ],
+                        //           ),
+                        //         ],
+                        //         if (_discountType == 'Amount') ...[
+                        //           const SizedBox(height: 12),
+                        //           TextField(
+                        //             controller: _discountAmountController,
+                        //             keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        //             decoration: InputDecoration(
+                        //               labelText: 'Discount Amount (Rs.)',
+                        //               border: OutlineInputBorder(),
+                        //               contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        //             ),
+                        //             onChanged: (value) {
+                        //               setState(() {});
+                        //             },
+                        //           ),
+                        //         ],
+                        //       ],
+                        //     ),
+                        //   ),
+                        // ),
+                        // const SizedBox(height: 16),
+                        // Final total display
+                        // Card(
+                        //   color: Colors.green[50],
+                        //   child: Padding(
+                        //     padding: EdgeInsets.all(16),
+                        //     child: Row(
+                        //       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        //       children: [
+                        //         Text(
+                        //           'Total Amount:',
+                        //           style: TextStyle(
+                        //             fontSize: 18,
+                        //             fontWeight: FontWeight.bold,
+                        //           ),
+                        //         ),
+                        //         Text(
+                        //           'Rs. ${_finalTotal.toStringAsFixed(2)}',
+                        //           style: TextStyle(
+                        //             fontSize: 18,
+                        //             fontWeight: FontWeight.bold,
+                        //             color: Color(0xffd41818),
+                        //           ),
+                        //         ),
+                        //       ],
+                        //     ),
+                        //   ),
+                        // ),
+                        // const SizedBox(height: 16),
 
                         // Submit button
                       ],
@@ -2683,11 +3023,18 @@ class _HomePageState extends State<HomePage> {
                           Expanded(
                             child: ElevatedButton.icon(
                               onPressed: () async {
+                                final discountPercentage = _isPercentageMode 
+                                    ? double.tryParse(_discountPercentageController.text) ?? 0.0 
+                                    : null;
                                 await BillPrinterService.printBill(
                                   context: context,
                                   cartItems: _cartItems,
                                   customer: _selectedCustomer,
-                                  total: _cartItemsTotal,
+                                  total: _finalTotal,
+                                  subtotal: _cartItemsTotal,
+                                  discountPercentage: discountPercentage,
+                                  discountAmount: _discountAmount,
+                                  isPercentageMode: _isPercentageMode,
                                   businessName: businessName,
                                   contactNumber: contactNumber,
                                   address: address,

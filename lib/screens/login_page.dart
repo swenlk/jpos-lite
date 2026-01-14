@@ -279,6 +279,7 @@ class _LoginPageState extends State<LoginPage> {
       if (jsonResponse['status_code'] == 'S1000') {
         final activeToken = jsonResponse['authentication_token'] ?? '';
         final businessName = jsonResponse['businessName'] ?? '';
+        final businessType = jsonResponse['businessType'] ?? '';
         final contactNumber = jsonResponse['contactNumber'] ?? '';
         final address = jsonResponse['address'] ?? '';
         final customers = jsonResponse['customers'] ?? [];
@@ -287,6 +288,7 @@ class _LoginPageState extends State<LoginPage> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('activeToken', activeToken);
         await prefs.setString('businessName', businessName);
+        await prefs.setString('businessType', businessType);
         await prefs.setString('contactNumber', contactNumber);
         await prefs.setString('address', address);
         await prefs.setString('customers', json.encode(customers));

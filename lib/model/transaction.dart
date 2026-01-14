@@ -23,6 +23,8 @@ class Transaction {
   final String transactionId;
   final String voucherPayment;
   final String? vatAmount;
+  final String? totalDiscountPercentage;
+  final String? totalDiscountValue;
 
   Transaction({
     required this.id,
@@ -49,6 +51,8 @@ class Transaction {
     required this.transactionId,
     required this.voucherPayment,
     this.vatAmount,
+    this.totalDiscountPercentage,
+    this.totalDiscountValue,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
@@ -89,6 +93,8 @@ class Transaction {
       transactionId: _toString(json['transactionId'], ''),
       voucherPayment: _toString(json['voucherPayment'], '0.00'),
       vatAmount: json['vatAmount']?.toString(),
+      totalDiscountPercentage: json['totalDiscountPercentage']?.toString(),
+      totalDiscountValue: json['totalDiscountValue']?.toString(),
     );
   }
 
@@ -118,6 +124,8 @@ class Transaction {
       'transactionId': transactionId,
       'voucherPayment': voucherPayment,
       'vatAmount': vatAmount,
+      'totalDiscountPercentage': totalDiscountPercentage,
+      'totalDiscountValue': totalDiscountValue,
     };
   }
 }
