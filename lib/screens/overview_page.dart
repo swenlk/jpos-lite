@@ -53,6 +53,14 @@ class _OverviewPageState extends State<OverviewPage> {
   double _balanceReturned = 0.0;
   double _currentCashInDrawer = 0.0;
 
+  // ========== NEW: Item Sales Summary fields ==========
+  List<ItemSalesSummary> _itemSalesSummary = [];
+
+  // ========== NEW: Category Sales Summary fields ==========
+  List<CategorySalesSummary> _categorySalesSummary = [];
+  int _itemCategorySelectedIndex = 0; // 0 = Item, 1 = Category
+  // ====================================================
+
   @override
   void initState() {
     super.initState();
@@ -166,7 +174,7 @@ class _OverviewPageState extends State<OverviewPage> {
       ],
     );
   }
- 
+
   Future<void> _fetchTransactions(DateTime startDate, DateTime endDate) async {
     if (activeToken == null) {
       SnackbarManager.showError(
@@ -373,7 +381,12 @@ class _OverviewPageState extends State<OverviewPage> {
     }
 
     // Calculate Payment Total - sum of all payment types
-    final paymentTotal = paymentCash + paymentCard + paymentBank + paymentCheque + paymentVoucher;
+    final paymentTotal =
+        paymentCash +
+        paymentCard +
+        paymentBank +
+        paymentCheque +
+        paymentVoucher;
 
     // Calculate Current Cash in Drawer
     // (Cash Payment + Opening Float if available) - (Balance Returned + Expenses if available)
@@ -382,6 +395,12 @@ class _OverviewPageState extends State<OverviewPage> {
         : 0.0;
     final currentCashInDrawer =
         (cashPayment + openingFloatValue) - (balanceReturned + _expenses);
+
+    // ========== NEW: Calculate Item Sales Summary ==========
+    final itemSalesSummary = _calculateItemSalesSummary(transactions);
+    // ========== NEW: Calculate Category Sales Summary ==========
+    final categorySalesSummary = _calculateCategorySalesSummary(transactions);
+    // =======================================================
 
     setState(() {
       _pendingCount = pendingCount;
@@ -400,6 +419,11 @@ class _OverviewPageState extends State<OverviewPage> {
       _cashPayment = cashPayment;
       _balanceReturned = balanceReturned;
       _currentCashInDrawer = currentCashInDrawer;
+      // ========== NEW: Set Item Sales Summary ==========
+      _itemSalesSummary = itemSalesSummary;
+      // ========== NEW: Set Category Sales Summary ==========
+      _categorySalesSummary = categorySalesSummary;
+      // =================================================
       _isLoading = false;
     });
 
@@ -420,6 +444,99 @@ class _OverviewPageState extends State<OverviewPage> {
     print('Current Cash in Drawer: ${currentCashInDrawer.toStringAsFixed(2)}');
   }
 
+  // ========== NEW: Method to calculate item sales summary ==========
+  // Groups line items by inventoryId (if not null) or itemId (if inventoryId is null)
+  // Calculates sum of count and lineTotal for each group
+  List<ItemSalesSummary> _calculateItemSalesSummary(
+    List<Transaction> transactions,
+  ) {
+    // Map to store grouped data
+    // Key: inventoryId or itemId, Value: ItemSalesSummary
+    final Map<String, ItemSalesSummary> groupedItems = {};
+
+    for (var transaction in transactions) {
+      for (var lineItem in transaction.lineItems) {
+        // Determine grouping key: use inventoryId if available, otherwise use itemId
+        final groupKey =
+            (lineItem.inventoryId != null && lineItem.inventoryId!.isNotEmpty)
+            ? lineItem.inventoryId!
+            : lineItem.itemId;
+
+        // Parse count and lineTotal
+        final count = double.tryParse(lineItem.count) ?? 0.0;
+        final lineTotal = double.tryParse(lineItem.lineTotal) ?? 0.0;
+
+        // Build item name with batch number if available
+        String itemName = lineItem.itemName;
+        if (lineItem.batchNumber != null && lineItem.batchNumber!.isNotEmpty) {
+          itemName += ' (${lineItem.batchNumber})';
+        }
+
+        // If this group already exists, accumulate the values
+        if (groupedItems.containsKey(groupKey)) {
+          groupedItems[groupKey]!.soldAmount += count;
+          groupedItems[groupKey]!.totalSales += lineTotal;
+        } else {
+          // Create new entry
+          groupedItems[groupKey] = ItemSalesSummary(
+            itemName: itemName,
+            soldAmount: count,
+            totalSales: lineTotal,
+          );
+        }
+      }
+    }
+
+    // Convert map to list and sort by total sales (descending)
+    final summaryList = groupedItems.values.toList();
+    summaryList.sort((a, b) => b.totalSales.compareTo(a.totalSales));
+
+    return summaryList;
+  }
+
+  // ========== NEW: Method to calculate category sales summary ==========
+  // Groups line items by categoryName
+  // Calculates sum of count and lineTotal for each category
+  List<CategorySalesSummary> _calculateCategorySalesSummary(
+    List<Transaction> transactions,
+  ) {
+    // Map to store grouped data
+    // Key: categoryName, Value: CategorySalesSummary
+    final Map<String, CategorySalesSummary> groupedCategories = {};
+
+    for (var transaction in transactions) {
+      for (var lineItem in transaction.lineItems) {
+        // Use categoryName as grouping key
+        final categoryName = lineItem.categoryName;
+
+        // Parse count and lineTotal
+        final count = double.tryParse(lineItem.count) ?? 0.0;
+        final lineTotal = double.tryParse(lineItem.lineTotal) ?? 0.0;
+
+        // If this category already exists, accumulate the values
+        if (groupedCategories.containsKey(categoryName)) {
+          groupedCategories[categoryName]!.soldAmount += count;
+          groupedCategories[categoryName]!.totalSales += lineTotal;
+        } else {
+          // Create new entry
+          groupedCategories[categoryName] = CategorySalesSummary(
+            categoryName: categoryName,
+            soldAmount: count,
+            totalSales: lineTotal,
+          );
+        }
+      }
+    }
+
+    // Convert map to list and sort by total sales (descending)
+    final summaryList = groupedCategories.values.toList();
+    summaryList.sort((a, b) => b.totalSales.compareTo(a.totalSales));
+
+    return summaryList;
+  }
+
+  // =================================================================
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -428,233 +545,566 @@ class _OverviewPageState extends State<OverviewPage> {
         backgroundColor: Color(0xffd41818),
         foregroundColor: Colors.white,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: ToggleButtons(
-                isSelected: List.generate(
-                  _options.length,
-                  (index) => index == _selectedIndex,
-                ),
-                onPressed: _handleDateRangeSelection,
-                children: _options
-                    .map(
-                      (option) => Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8.0,
-                          vertical: 4.0,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // SizedBox(
+              //   width: double.infinity,
+              //   child: ToggleButtons(
+              //     isSelected: List.generate(
+              //       _options.length,
+              //       (index) => index == _selectedIndex,
+              //     ),
+              //     onPressed: _handleDateRangeSelection,
+              //     children: _options
+              //         .map(
+              //           (option) => Padding(
+              //             padding: const EdgeInsets.symmetric(
+              //               horizontal: 8.0,
+              //               vertical: 4.0,
+              //             ),
+              //             child: Text(
+              //               option,
+              //               style: const TextStyle(fontSize: 12),
+              //             ),
+              //           ),
+              //         )
+              //         .toList(),
+              //     borderRadius: BorderRadius.circular(8.0),
+              //     selectedColor: Colors.white,
+              //     fillColor: Color(0xffd41818),
+              //     color: Colors.black87,
+              //     constraints: const BoxConstraints(minHeight: 32.0),
+              //   ),
+              // ),
+              Center(
+                child: Wrap(
+                  spacing: 8.0,
+                  runSpacing: 8.0,
+                  alignment: WrapAlignment.center,
+                  children: List<Widget>.generate(_options.length, (int index) {
+                    return ChoiceChip(
+                      label: Text(
+                        _options[index],
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _selectedIndex == index ? Colors.white : Colors.black87,
                         ),
-                        child: Text(
-                          option,
-                          style: const TextStyle(fontSize: 12),
+                      ),
+                      selected: _selectedIndex == index,
+                      selectedColor: const Color(0xffd41818),
+                      backgroundColor: Colors.grey[200],
+                      onSelected: (bool selected) {
+                        if (selected) {
+                          _handleDateRangeSelection(index);
+                        }
+                      },
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        side: BorderSide(
+                          color: _selectedIndex == index ? Colors.transparent : Colors.grey[400]!,
                         ),
                       ),
-                    )
-                    .toList(),
-                borderRadius: BorderRadius.circular(8.0),
-                selectedColor: Colors.white,
-                fillColor: Color(0xffd41818),
-                color: Colors.black87,
-                constraints: const BoxConstraints(minHeight: 32.0),
-              ),
-            ),
-            const SizedBox(height: 24.0),
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: CircularProgressIndicator(),
+                      showCheckmark: false,
+                      labelPadding: const EdgeInsets.symmetric(horizontal: 12.0),
+                    );
+                  }),
                 ),
-              )
-            else
-              Column(
-                children: [
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Opening Float Summary',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(height: 14.0),
-                          _buildSummaryRow(
-                            'Opening Float',
-                            _openingFloat ?? '-',
-                            Colors.black87,
-                          ),
-                          // const SizedBox(height: 12.0),
-                          _buildSummaryRow(
-                            'Cash Payment',
-                            _cashPayment.toStringAsFixed(2),
-                            Colors.green,
-                          ),
-                          // const SizedBox(height: 12.0),
-                          _buildSummaryRow(
-                            'Expenses',
-                            _expenses.toStringAsFixed(2),
-                            Colors.red,
-                          ),
-                          // const SizedBox(height: 12.0),
-                          _buildSummaryRow(
-                            'Balance Returned',
-                            _balanceReturned.toStringAsFixed(2),
-                            Colors.red,
-                          ),
-                          // const SizedBox(height: 12.0),
-                          _buildSummaryRow(
-                            'Current Cash in Drawer',
-                            _currentCashInDrawer.toStringAsFixed(2),
-                            Colors.black87,
-                            isBold: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12.0),
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Transaction Summary',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(height: 14.0),
-                          _buildSummaryRow(
-                            'Pending',
-                            '$_pendingCount',
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Completed',
-                            '$_completedCount',
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Total Transactions',
-                            '$_totalTransactions',
-                            Colors.black87,
-                            isBold: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12.0),
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Sales Summary',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(height: 14.0),
-                          _buildSummaryRow(
-                            'Pre-discount Sales',
-                            _preDiscountSales.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Total Discounts',
-                            _totalDiscounts.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Total VAT',
-                            _totalVat.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Total Sales',
-                            _totalSales.toStringAsFixed(2),
-                            Colors.black87,
-                            isBold: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12.0),
-                  Card(
-                    elevation: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Payment Summary',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(height: 14.0),
-                          _buildSummaryRow(
-                            'Cash Payment',
-                            _paymentCash.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Card Payment',
-                            _paymentCard.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Bank Payment',
-                            _paymentBank.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Cheque Payment',
-                            _paymentCheque.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Voucher Payment',
-                            _paymentVoucher.toStringAsFixed(2),
-                            Colors.black87,
-                          ),
-                          _buildSummaryRow(
-                            'Total',
-                            _paymentTotal.toStringAsFixed(2),
-                            Colors.black87,
-                            isBold: true,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
               ),
-          ],
+              const SizedBox(height: 24.0),
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16.0),
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Opening Float Summary',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(height: 14.0),
+                                _buildSummaryRow(
+                                  'Opening Float',
+                                  _openingFloat ?? '-',
+                                  Colors.black87,
+                                ),
+                                // const SizedBox(height: 12.0),
+                                _buildSummaryRow(
+                                  'Cash Payment',
+                                  _cashPayment.toStringAsFixed(2),
+                                  Colors.green,
+                                ),
+                                // const SizedBox(height: 12.0),
+                                _buildSummaryRow(
+                                  'Expenses',
+                                  _expenses.toStringAsFixed(2),
+                                  Colors.red,
+                                ),
+                                // const SizedBox(height: 12.0),
+                                _buildSummaryRow(
+                                  'Balance Returned',
+                                  _balanceReturned.toStringAsFixed(2),
+                                  Colors.red,
+                                ),
+                                // const SizedBox(height: 12.0),
+                                _buildSummaryRow(
+                                  'Current Cash in Drawer',
+                                  _currentCashInDrawer.toStringAsFixed(2),
+                                  Colors.black87,
+                                  isBold: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Transaction Summary',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(height: 14.0),
+                                _buildSummaryRow(
+                                  'Pending',
+                                  '$_pendingCount',
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Completed',
+                                  '$_completedCount',
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Total Transactions',
+                                  '$_totalTransactions',
+                                  Colors.black87,
+                                  isBold: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Sales Summary',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(height: 14.0),
+                                _buildSummaryRow(
+                                  'Pre-discount Sales',
+                                  _preDiscountSales.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Total Discounts',
+                                  _totalDiscounts.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Total VAT',
+                                  _totalVat.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Total Sales',
+                                  _totalSales.toStringAsFixed(2),
+                                  Colors.black87,
+                                  isBold: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Payment Summary',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(height: 14.0),
+                                _buildSummaryRow(
+                                  'Cash Payment',
+                                  _paymentCash.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Card Payment',
+                                  _paymentCard.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Bank Payment',
+                                  _paymentBank.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Cheque Payment',
+                                  _paymentCheque.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Voucher Payment',
+                                  _paymentVoucher.toStringAsFixed(2),
+                                  Colors.black87,
+                                ),
+                                _buildSummaryRow(
+                                  'Total',
+                                  _paymentTotal.toStringAsFixed(2),
+                                  Colors.black87,
+                                  isBold: true,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        // ========== NEW: Item Sales Summary Card ==========
+                        const SizedBox(height: 4.0),
+                        Card(
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Item Sales Summary',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const Divider(height: 14.0),
+                                // ========== NEW: Item/Category Toggle Buttons ==========
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ToggleButtons(
+                                    isSelected: [
+                                      _itemCategorySelectedIndex == 0,
+                                      _itemCategorySelectedIndex == 1,
+                                    ],
+                                    onPressed: (index) {
+                                      setState(() {
+                                        _itemCategorySelectedIndex = index;
+                                      });
+                                    },
+                                    children: const [
+                                      Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16.0,
+                                          vertical: 4.0,
+                                        ),
+                                        child: Text(
+                                          'Item',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16.0,
+                                          vertical: 4.0,
+                                        ),
+                                        child: Text(
+                                          'Category',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                    borderRadius: BorderRadius.circular(8.0),
+                                    selectedColor: Colors.white,
+                                    fillColor: Color(0xffd41818),
+                                    color: Colors.black87,
+                                    constraints: const BoxConstraints(
+                                      minHeight: 32.0,
+                                    ),
+                                  ),
+                                ),
+                                // =======================================================
+                                // ========== NEW: Conditional rendering based on selection ==========
+                                if (_itemCategorySelectedIndex == 0)
+                                  // Display Item Sales Summary
+                                  _itemSalesSummary.isEmpty
+                                      ? const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 8.0,
+                                          ),
+                                          child: Text(
+                                            'No items sold in this period',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        )
+                                      // ========== UPDATED: Make DataTable use full width ==========
+                                      : SizedBox(
+                                          width: double.infinity,
+                                          child: DataTable(
+                                            headingRowHeight: 40,
+                                            dataRowMinHeight: 40,
+                                            dataRowMaxHeight: 40,
+                                            columnSpacing: 16,
+                                            columns: const [
+                                              DataColumn(
+                                                label: Expanded(
+                                                  child: Text(
+                                                    'Name',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              DataColumn(
+                                                label: Text(
+                                                  'Sold Amount',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                numeric: true,
+                                              ),
+                                              DataColumn(
+                                                label: Text(
+                                                  'Total Sales',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                numeric: true,
+                                              ),
+                                            ],
+                                            rows: _itemSalesSummary.map((item) {
+                                              return DataRow(
+                                                cells: [
+                                                  DataCell(
+                                                    Text(
+                                                      item.itemName,
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      item.soldAmount
+                                                          .toStringAsFixed(0),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      item.totalSales
+                                                          .toStringAsFixed(2),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            }).toList(),
+                                          ),
+                                        )
+
+                                // ===============================================================
+                                else
+                                  // Display Category Sales Summary
+                                  _categorySalesSummary.isEmpty
+                                      ? const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            vertical: 8.0,
+                                          ),
+                                          child: Text(
+                                            'No categories sold in this period',
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        )
+                                      // ========== UPDATED: Make DataTable use full width ==========
+                                      : SizedBox(
+                                          width: double.infinity,
+                                          child: DataTable(
+                                            headingRowHeight: 40,
+                                            dataRowMinHeight: 40,
+                                            dataRowMaxHeight: 40,
+                                            columnSpacing: 16,
+                                            columns: const [
+                                              DataColumn(
+                                                label: Expanded(
+                                                  child: Text(
+                                                    'Category Name',
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              DataColumn(
+                                                label: Text(
+                                                  'Sold Amount',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                numeric: true,
+                                              ),
+                                              DataColumn(
+                                                label: Text(
+                                                  'Total Sales',
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                numeric: true,
+                                              ),
+                                            ],
+                                            rows: _categorySalesSummary.map((
+                                              category,
+                                            ) {
+                                              return DataRow(
+                                                cells: [
+                                                  DataCell(
+                                                    Text(
+                                                      category.categoryName,
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      category.soldAmount
+                                                          .toStringAsFixed(0),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  DataCell(
+                                                    Text(
+                                                      category.totalSales
+                                                          .toStringAsFixed(2),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ),
+                                // ===============================================================
+                              ],
+                            ),
+                          ),
+                        ),
+                        // ==================================================
+                      ],
+                    ),
+                  ),
+                ),
+              // Copyright at the bottom
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
+                  child: Text(
+                    '©${DateTime.now().year} JPosLite. All rights reserved.',
+                    style: TextStyle(fontSize: 12.0, color: Colors.grey[500]),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+// ========== NEW: Helper class to store item sales summary data ==========
+class ItemSalesSummary {
+  final String itemName;
+  double soldAmount;
+  double totalSales;
+
+  ItemSalesSummary({
+    required this.itemName,
+    required this.soldAmount,
+    required this.totalSales,
+  });
+}
+
+// ========== NEW: Helper class to store category sales summary data ==========
+class CategorySalesSummary {
+  final String categoryName;
+  double soldAmount;
+  double totalSales;
+
+  CategorySalesSummary({
+    required this.categoryName,
+    required this.soldAmount,
+    required this.totalSales,
+  });
+}
+
+// =========================================================================
