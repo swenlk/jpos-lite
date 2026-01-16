@@ -41,6 +41,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   String? activeToken;
   String? businessName;
+  String? businessType;
   String? contactNumber;
   String? address;
   bool _fingerprintEnabled = false;
@@ -92,6 +93,8 @@ class _HomePageState extends State<HomePage> {
   // Tile layout search
   late TextEditingController _tileSearchController;
 
+  String? _currentTransactionId;
+
   @override
   void initState() {
     // TODO: implement initState
@@ -126,7 +129,9 @@ class _HomePageState extends State<HomePage> {
     if (storedToken != null && storedToken.isNotEmpty) {
       setState(() {
         activeToken = storedToken;
-        businessName = prefs.getString('businessName') ?? 'No Business Name found';
+        businessName =
+            prefs.getString('businessName') ?? 'No Business Name found';
+        businessType = prefs.getString('businessType') ?? '';
         contactNumber = prefs.getString('contactNumber') ?? '';
         address = prefs.getString('address') ?? '';
         _fingerprintEnabled = prefs.getBool('fingerprint') ?? false;
@@ -191,10 +196,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _showAddCustomerDialog() async {
     // Check if fingerprint is enabled but IP address is not configured
-    if (_fingerprintEnabled && (_fingerprintDeviceIp == null || _fingerprintDeviceIp!.isEmpty)) {
+    if (_fingerprintEnabled &&
+        (_fingerprintDeviceIp == null || _fingerprintDeviceIp!.isEmpty)) {
       SnackbarManager.showError(
         context,
-        message: 'Please enter the fingerprint IP address in Settings → Fingerprint Device.',
+        message:
+            'Please enter the fingerprint IP address in Settings → Fingerprint Device.',
       );
       return;
     }
@@ -293,7 +300,8 @@ class _HomePageState extends State<HomePage> {
         }
 
         // Update fingerprint value from configurations if present
-        final configurations = jsonResponse['configurations'] as Map<String, dynamic>?;
+        final configurations =
+            jsonResponse['configurations'] as Map<String, dynamic>?;
         if (configurations != null && configurations['fingerprint'] != null) {
           final fingerprintValue = configurations['fingerprint'] == true;
           await prefs.setBool('fingerprint', fingerprintValue);
@@ -311,8 +319,8 @@ class _HomePageState extends State<HomePage> {
       } else {
         final errorMessage =
             jsonResponse?['status_description'] ??
-                jsonResponse?['message'] ??
-                'Server returned status ${response.statusCode}';
+            jsonResponse?['message'] ??
+            'Server returned status ${response.statusCode}';
         throw Exception(errorMessage);
       }
     } on DioException catch (e) {
@@ -325,18 +333,18 @@ class _HomePageState extends State<HomePage> {
 
         if (e.response?.statusCode == 403) {
           errorMessage =
-          'Access denied. Please check your permissions or try logging in again.';
+              'Access denied. Please check your permissions or try logging in again.';
         } else if (e.response?.statusCode == 401) {
           errorMessage = 'Authentication failed. Please login again.';
         } else {
           errorMessage =
               e.response?.data?['status_description'] ??
-                  e.response?.data?['message'] ??
-                  'Server error (${e.response?.statusCode})';
+              e.response?.data?['message'] ??
+              'Server error (${e.response?.statusCode})';
         }
       } else if (e.type == DioExceptionType.connectionTimeout) {
         errorMessage =
-        'Connection timeout. Please check your internet connection.';
+            'Connection timeout. Please check your internet connection.';
       } else if (e.type == DioExceptionType.receiveTimeout) {
         errorMessage = 'Request timeout. Please try again.';
       } else {
@@ -385,7 +393,7 @@ class _HomePageState extends State<HomePage> {
 
   int _getMaxQuantity() {
     if (_selectedItem == null) return 999;
-    
+
     if (_selectedItem!.inventoried) {
       if (_selectedInventory == null) return 0;
       return double.parse(_selectedInventory!.stock).toInt();
@@ -412,7 +420,7 @@ class _HomePageState extends State<HomePage> {
       );
       return;
     }
-    
+
     if (_selectedQuantity < maxQuantity) {
       setState(() {
         _selectedQuantity++;
@@ -435,7 +443,7 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
-    
+
     final maxQuantity = _getMaxQuantity();
     if (maxQuantity == 0) {
       setState(() {
@@ -444,7 +452,7 @@ class _HomePageState extends State<HomePage> {
       });
       return;
     }
-    
+
     if (quantity > maxQuantity) {
       SnackbarManager.showError(
         context,
@@ -488,11 +496,11 @@ class _HomePageState extends State<HomePage> {
       }
 
       final maxQuantity = double.parse(inventory.stock).toInt();
-      
+
       // Check if this batch is already in cart
       final existingCartItem = _cartItems.firstWhere(
-            (cartItem) =>
-        cartItem.itemId == item.id &&
+        (cartItem) =>
+            cartItem.itemId == item.id &&
             cartItem.batchNumber == inventory.batchNumber,
         orElse: () => CartItem(
           itemId: '',
@@ -513,7 +521,7 @@ class _HomePageState extends State<HomePage> {
           );
           return;
         }
-        
+
         final updatedCartItems = _cartItems.map((cartItem) {
           if (cartItem.itemId == item.id &&
               cartItem.batchNumber == inventory.batchNumber) {
@@ -534,7 +542,7 @@ class _HomePageState extends State<HomePage> {
           );
           return;
         }
-        
+
         // Add new item to cart
         final cartItem = CartItem(
           itemId: item.id,
@@ -552,7 +560,7 @@ class _HomePageState extends State<HomePage> {
     } else {
       // For non-inventoried items, add directly to cart
       final existingCartItem = _cartItems.firstWhere(
-            (cartItem) => cartItem.itemId == item.id,
+        (cartItem) => cartItem.itemId == item.id,
         orElse: () => CartItem(
           itemId: '',
           itemDisplayName: '',
@@ -596,7 +604,7 @@ class _HomePageState extends State<HomePage> {
   void _addToCart() {
     if (_selectedItem == null) return;
     _addItemToCart(_selectedItem!, _selectedInventory, _selectedQuantity);
-    
+
     // Reset quantity to 1 after successfully adding to cart
     setState(() {
       _selectedQuantity = 1;
@@ -611,9 +619,7 @@ class _HomePageState extends State<HomePage> {
       },
       child: Card(
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -623,10 +629,7 @@ class _HomePageState extends State<HomePage> {
               Flexible(
                 child: Text(
                   item.displayName,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -635,10 +638,7 @@ class _HomePageState extends State<HomePage> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.attach_money,
-                    size: 14,
-                  ),
+                  Icon(Icons.attach_money, size: 14),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
@@ -662,13 +662,11 @@ class _HomePageState extends State<HomePage> {
   Widget _buildInventoryTileCard(Item item, Inventory inventory) {
     return GestureDetector(
       onTap: () {
-        _addItemToCart(item, inventory, 1); 
+        _addItemToCart(item, inventory, 1);
       },
       child: Card(
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -678,10 +676,7 @@ class _HomePageState extends State<HomePage> {
               Flexible(
                 child: Text(
                   item.displayName,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -689,19 +684,13 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 4),
               Text(
                 'Batch ${inventory.batchNumber}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[700],
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
               ),
               const SizedBox(height: 4),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.attach_money,
-                    size: 12,
-                  ),
+                  Icon(Icons.attach_money, size: 12),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
@@ -719,17 +708,12 @@ class _HomePageState extends State<HomePage> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    Icons.inventory_2,
-                    size: 12,
-                  ),
+                  Icon(Icons.inventory_2, size: 12),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
                       'Stock: ${inventory.stock}',
-                      style: TextStyle(
-                        fontSize: 11,
-                      ),
+                      style: TextStyle(fontSize: 11),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -769,10 +753,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _showClearConfirmationDialog() {
-    ClearConfirmationDialog.show(
-      context: context,
-      onClear: _performClear,
-    );
+    ClearConfirmationDialog.show(context: context, onClear: _performClear);
   }
 
   void _performClear() {
@@ -786,11 +767,9 @@ class _HomePageState extends State<HomePage> {
       _isPercentageMode = true;
       _discountPercentageController.text = '0';
       _discountAmountController.text = '0';
+      _currentTransactionId = null;
     });
-    SnackbarManager.showSuccess(
-      context,
-      message: 'All fields cleared',
-    );
+    SnackbarManager.showSuccess(context, message: 'All fields cleared');
   }
 
   double get _cartItemsTotal {
@@ -799,7 +778,8 @@ class _HomePageState extends State<HomePage> {
 
   double get _discountAmount {
     if (_isPercentageMode) {
-      final percentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+      final percentage =
+          double.tryParse(_discountPercentageController.text) ?? 0.0;
       return (_cartItemsTotal * percentage) / 100.0;
     } else {
       return double.tryParse(_discountAmountController.text) ?? 0.0;
@@ -812,9 +792,17 @@ class _HomePageState extends State<HomePage> {
 
   String generateTransactionID() {
     final now = DateTime.now();
-    final formatted = "${now.year % 100}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}"
+    final formatted =
+        "${now.year % 100}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}"
         "${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}";
     return formatted; // Format: yyMMddHHmmss
+  }
+
+  String _getCurrentTransactionId() {
+    if (_currentTransactionId == null) {
+      _currentTransactionId = generateTransactionID();
+    }
+    return _currentTransactionId!;
   }
 
   Future<void> _resendOtp() async {
@@ -839,14 +827,13 @@ class _HomePageState extends State<HomePage> {
       dio.options.connectTimeout = const Duration(seconds: 30);
       dio.options.receiveTimeout = const Duration(seconds: 30);
 
-      print('📡 Calling resend_otp API with customerId: ${_selectedCustomer!.id}');
+      print(
+        '📡 Calling resend_otp API with customerId: ${_selectedCustomer!.id}',
+      );
 
       final response = await dio.post(
         AppConfigs.baseUrl + ApiEndpoints.resendOtp,
-        data: {
-          'activeToken': activeToken,
-          'customerId': _selectedCustomer!.id,
-        },
+        data: {'activeToken': activeToken, 'customerId': _selectedCustomer!.id},
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -873,15 +860,17 @@ class _HomePageState extends State<HomePage> {
           });
           SnackbarManager.showSuccess(
             context,
-            message: jsonResponse['status_description'] ?? 'OTP sent successfully!',
+            message:
+                jsonResponse['status_description'] ?? 'OTP sent successfully!',
           );
         } else {
-          final errorMessage = jsonResponse['status_description'] ??
-              'Failed to send OTP';
+          final errorMessage =
+              jsonResponse['status_description'] ?? 'Failed to send OTP';
           SnackbarManager.showError(context, message: errorMessage);
         }
       } else {
-        final errorMessage = jsonResponse['status_description'] ??
+        final errorMessage =
+            jsonResponse['status_description'] ??
             jsonResponse['message'] ??
             'Server returned status ${response.statusCode}';
         SnackbarManager.showError(context, message: errorMessage);
@@ -891,14 +880,16 @@ class _HomePageState extends State<HomePage> {
       String errorMessage = 'Error sending OTP';
       if (e.response != null) {
         final errorResponse = e.response!.data;
-        errorMessage = errorResponse['status_description'] ??
+        errorMessage =
+            errorResponse['status_description'] ??
             errorResponse['message'] ??
             'Server error';
       } else if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         errorMessage = 'Connection timeout. Please try again.';
       } else {
-        errorMessage = 'Connection error. Please check your internet connection.';
+        errorMessage =
+            'Connection error. Please check your internet connection.';
       }
       SnackbarManager.showError(context, message: errorMessage);
     } catch (e) {
@@ -919,7 +910,8 @@ class _HomePageState extends State<HomePage> {
       return;
     }
 
-    if (_selectedCustomer!.fingerprintId == null || _selectedCustomer!.fingerprintId!.isEmpty) {
+    if (_selectedCustomer!.fingerprintId == null ||
+        _selectedCustomer!.fingerprintId!.isEmpty) {
       SnackbarManager.showError(
         context,
         message: 'Customer does not have a fingerprint ID.',
@@ -939,7 +931,8 @@ class _HomePageState extends State<HomePage> {
     if (_fingerprintDeviceIp == null || _fingerprintDeviceIp!.isEmpty) {
       SnackbarManager.showError(
         context,
-        message: 'Please configure the fingerprint device IP address in settings.',
+        message:
+            'Please configure the fingerprint device IP address in settings.',
       );
       return;
     }
@@ -949,7 +942,9 @@ class _HomePageState extends State<HomePage> {
       dio.options.connectTimeout = const Duration(seconds: 10);
       dio.options.receiveTimeout = const Duration(seconds: 10);
 
-      print('🔍 Sending fingerprint scan request for customer: ${_selectedCustomer!.id} with fingerprint ID: ${_selectedCustomer!.fingerprintId}');
+      print(
+        '🔍 Sending fingerprint scan request for customer: ${_selectedCustomer!.id} with fingerprint ID: ${_selectedCustomer!.fingerprintId}',
+      );
 
       final response = await dio.post(
         'http://$_fingerprintDeviceIp/ID_NUMBER',
@@ -974,7 +969,9 @@ class _HomePageState extends State<HomePage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         final responseData = response.data;
         final status = responseData?['status']?.toString() ?? '';
-        final message = responseData?['message']?.toString() ?? 'Fingerprint scan initiated';
+        final message =
+            responseData?['message']?.toString() ??
+            'Fingerprint scan initiated';
         final step = responseData?['step']?.toString() ?? '';
         final id = responseData?['ID']?.toString() ?? '';
 
@@ -983,38 +980,23 @@ class _HomePageState extends State<HomePage> {
         // Show the message from the API response based on status
         final statusLower = status.toLowerCase();
         if (statusLower == 'success') {
-          SnackbarManager.showSuccess(
-            context,
-            message: message,
-          );
+          SnackbarManager.showSuccess(context, message: message);
           // Call _syncData on success
           _syncData();
         } else if (statusLower == 'progress') {
-          SnackbarManager.showInfo(
-            context,
-            message: message,
-          );
+          SnackbarManager.showInfo(context, message: message);
         } else if (statusLower == 'error' || statusLower == 'failed') {
-          SnackbarManager.showError(
-            context,
-            message: message,
-          );
+          SnackbarManager.showError(context, message: message);
         } else {
           // Default to info for unknown statuses
-          SnackbarManager.showInfo(
-            context,
-            message: message,
-          );
+          SnackbarManager.showInfo(context, message: message);
         }
       } else {
         final errorMessage =
             response.data?['message'] ??
-                response.data?['error'] ??
-                'Server returned status ${response.statusCode}';
-        SnackbarManager.showError(
-          context,
-          message: errorMessage,
-        );
+            response.data?['error'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
       }
     } on DioException catch (e) {
       print('❌ DioException during fingerprint scan: $e');
@@ -1025,8 +1007,8 @@ class _HomePageState extends State<HomePage> {
         print('Response data: ${e.response?.data}');
         errorMessage =
             e.response?.data?['message'] ??
-                e.response?.data?['error'] ??
-                'Server error (${e.response?.statusCode})';
+            e.response?.data?['error'] ??
+            'Server error (${e.response?.statusCode})';
       } else if (e.type == DioExceptionType.connectionTimeout) {
         errorMessage =
             'Connection timeout. Please check your connection to the fingerprint scanner.';
@@ -1065,10 +1047,7 @@ class _HomePageState extends State<HomePage> {
 
     final enteredOtp = _otpController.text.trim();
     if (enteredOtp.isEmpty) {
-      SnackbarManager.showError(
-        context,
-        message: 'Please enter the OTP.',
-      );
+      SnackbarManager.showError(context, message: 'Please enter the OTP.');
       return;
     }
 
@@ -1094,14 +1073,13 @@ class _HomePageState extends State<HomePage> {
       dio.options.connectTimeout = const Duration(seconds: 30);
       dio.options.receiveTimeout = const Duration(seconds: 30);
 
-      print('📡 Calling verify_customer API with customerId: ${_selectedCustomer!.id}');
+      print(
+        '📡 Calling verify_customer API with customerId: ${_selectedCustomer!.id}',
+      );
 
       final response = await dio.post(
         AppConfigs.baseUrl + ApiEndpoints.verifyCustomer,
-        data: {
-          'activeToken': activeToken,
-          'customerId': _selectedCustomer!.id,
-        },
+        data: {'activeToken': activeToken, 'customerId': _selectedCustomer!.id},
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -1122,9 +1100,11 @@ class _HomePageState extends State<HomePage> {
         if (jsonResponse['status_code'] == 'S1000') {
           SnackbarManager.showSuccess(
             context,
-            message: jsonResponse['status_description'] ?? 'Customer verified successfully!',
+            message:
+                jsonResponse['status_description'] ??
+                'Customer verified successfully!',
           );
-          
+
           // Update selected customer status to VERIFIED immediately
           if (_selectedCustomer != null) {
             setState(() {
@@ -1142,16 +1122,17 @@ class _HomePageState extends State<HomePage> {
               _otpController.clear();
             });
           }
-          
+
           // Refresh customers list to get updated status
           _syncData();
         } else {
-          final errorMessage = jsonResponse['status_description'] ??
-              'Failed to verify customer';
+          final errorMessage =
+              jsonResponse['status_description'] ?? 'Failed to verify customer';
           SnackbarManager.showError(context, message: errorMessage);
         }
       } else {
-        final errorMessage = jsonResponse['status_description'] ??
+        final errorMessage =
+            jsonResponse['status_description'] ??
             jsonResponse['message'] ??
             'Server returned status ${response.statusCode}';
         SnackbarManager.showError(context, message: errorMessage);
@@ -1161,14 +1142,16 @@ class _HomePageState extends State<HomePage> {
       String errorMessage = 'Error verifying customer';
       if (e.response != null) {
         final errorResponse = e.response!.data;
-        errorMessage = errorResponse['status_description'] ??
+        errorMessage =
+            errorResponse['status_description'] ??
             errorResponse['message'] ??
             'Server error';
       } else if (e.type == DioExceptionType.connectionTimeout ||
           e.type == DioExceptionType.receiveTimeout) {
         errorMessage = 'Connection timeout. Please try again.';
       } else {
-        errorMessage = 'Connection error. Please check your internet connection.';
+        errorMessage =
+            'Connection error. Please check your internet connection.';
       }
       SnackbarManager.showError(context, message: errorMessage);
     } catch (e) {
@@ -1181,14 +1164,18 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _showFingerprintDeviceDialog() async {
-    final ipController = TextEditingController(text: _fingerprintDeviceIp ?? '');
-    
+    final ipController = TextEditingController(
+      text: _fingerprintDeviceIp ?? '',
+    );
+
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (BuildContext context) {
         return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.0),
+          ),
           elevation: 8.0,
           child: Container(
             padding: const EdgeInsets.all(24.0),
@@ -1279,7 +1266,7 @@ class _HomePageState extends State<HomePage> {
                         child: Container(
                           height: 44.0,
                           decoration: BoxDecoration(
-                            color:  Colors.green,
+                            color: Colors.green,
                             borderRadius: BorderRadius.circular(8.0),
                           ),
                           child: TextButton(
@@ -1294,7 +1281,9 @@ class _HomePageState extends State<HomePage> {
                               }
 
                               // Validate IP address format (basic validation)
-                              final ipRegex = RegExp(r'^(\d{1,3}\.){3}\d{1,3}$');
+                              final ipRegex = RegExp(
+                                r'^(\d{1,3}\.){3}\d{1,3}$',
+                              );
                               if (!ipRegex.hasMatch(ipAddress)) {
                                 SnackbarManager.showError(
                                   context,
@@ -1304,8 +1293,12 @@ class _HomePageState extends State<HomePage> {
                               }
 
                               // Save IP address to SharedPreferences
-                              final prefs = await SharedPreferences.getInstance();
-                              await prefs.setString('fingerprintDeviceIp', ipAddress);
+                              final prefs =
+                                  await SharedPreferences.getInstance();
+                              await prefs.setString(
+                                'fingerprintDeviceIp',
+                                ipAddress,
+                              );
 
                               setState(() {
                                 _fingerprintDeviceIp = ipAddress;
@@ -1313,7 +1306,8 @@ class _HomePageState extends State<HomePage> {
 
                               SnackbarManager.showSuccess(
                                 context,
-                                message: 'Fingerprint device IP address saved successfully!',
+                                message:
+                                    'Fingerprint device IP address saved successfully!',
                               );
 
                               Navigator.of(context).pop();
@@ -1383,16 +1377,24 @@ class _HomePageState extends State<HomePage> {
       builder: (BuildContext context) {
         return CheckoutDialog(
           totalAmount: _finalTotal,
-          onComplete: (paidAmount, balance, paymentType, otherPaymentMethod, paymentReference, splitPayments) {
-            _submitTransaction(
-              paidAmount: paidAmount,
-              balance: balance,
-              paymentType: paymentType,
-              otherPaymentMethod: otherPaymentMethod,
-              paymentReference: paymentReference,
-              splitPayments: splitPayments,
-            );
-          },
+          onComplete:
+              (
+                paidAmount,
+                balance,
+                paymentType,
+                otherPaymentMethod,
+                paymentReference,
+                splitPayments,
+              ) {
+                _submitTransaction(
+                  paidAmount: paidAmount,
+                  balance: balance,
+                  paymentType: paymentType,
+                  otherPaymentMethod: otherPaymentMethod,
+                  paymentReference: paymentReference,
+                  splitPayments: splitPayments,
+                );
+              },
         );
       },
     );
@@ -1401,7 +1403,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _printBillImmediately() async {
     // Check if device is connected
     BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
-    
+
     // Check if device exists and is actually connected
     bool isConnected = false;
     if (connectedDevice != null) {
@@ -1414,7 +1416,7 @@ class _HomePageState extends State<HomePage> {
         isConnected = false;
       }
     }
-    
+
     if (!isConnected) {
       // If printer is not connected, show transaction success dialog and print dialog
       _showTransactionSuccessDialog();
@@ -1445,6 +1447,7 @@ class _HomePageState extends State<HomePage> {
       businessName: businessName,
       contactNumber: contactNumber,
       address: address,
+        transactionId:_getCurrentTransactionId(),
       onSuccess: () {
         // Clear cart after successful print
         setState(() {
@@ -1455,7 +1458,7 @@ class _HomePageState extends State<HomePage> {
           _selectedQuantity = 1;
           _quantityController.text = '$_selectedQuantity';
         });
-        
+
         // Clear saved data
         _savedCartItems = null;
         _savedCustomer = null;
@@ -1513,7 +1516,7 @@ class _HomePageState extends State<HomePage> {
             _savedChequePayment = null;
             _savedBalance = null;
             _savedOrderDate = null;
-            
+
             // Close dialog after clearing fields
             Navigator.of(dialogContext).pop();
           },
@@ -1525,7 +1528,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _handlePrintReceipt(BuildContext dialogContext) async {
     // Check if device is connected
     BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
-    
+
     // Check if device exists and is actually connected
     bool isConnected = false;
     if (connectedDevice != null) {
@@ -1538,7 +1541,7 @@ class _HomePageState extends State<HomePage> {
         isConnected = false;
       }
     }
-    
+
     if (!isConnected) {
       // Show print connection dialog (this will open on top of the transaction dialog)
       await _showPrintDialog();
@@ -1554,7 +1557,7 @@ class _HomePageState extends State<HomePage> {
         }
         return; // User didn't connect a device, dialog remains open
       }
-      
+
       // Verify connection state again
       try {
         BluetoothConnectionState connectionState =
@@ -1563,7 +1566,8 @@ class _HomePageState extends State<HomePage> {
           if (dialogContext.mounted) {
             SnackbarManager.showError(
               dialogContext,
-              message: 'Printer is not connected. Please connect and try again.',
+              message:
+                  'Printer is not connected. Please connect and try again.',
             );
           }
           return; // Dialog remains open
@@ -1600,10 +1604,10 @@ class _HomePageState extends State<HomePage> {
       businessName: businessName,
       contactNumber: contactNumber,
       address: address,
+      transactionId: _getCurrentTransactionId(),
     );
     // Dialog remains open after printing
   }
-
 
   List<Map<String, dynamic>> _buildLineItems() {
     final List<Map<String, dynamic>> lineItems = [];
@@ -1653,7 +1657,8 @@ class _HomePageState extends State<HomePage> {
         "itemId": cartItem.itemId,
         "lineTotal": lineTotal.toStringAsFixed(2),
         "salesPrice": cartItem.salesPrice,
-        "purchasePrice": inventory?.purchasePrice ?? item.purchasePrice ?? "0.0",
+        "purchasePrice":
+            inventory?.purchasePrice ?? item.purchasePrice ?? "0.0",
         "inventoryId": inventory?.id,
         "itemCode": item.code,
         "itemName": item.name,
@@ -1700,11 +1705,12 @@ class _HomePageState extends State<HomePage> {
       dio.options.connectTimeout = const Duration(seconds: 30);
       dio.options.receiveTimeout = const Duration(seconds: 30);
 
-      final transactionId = generateTransactionID();
+      final transactionId = _getCurrentTransactionId();
       final subTotal = _cartItemsTotal.toStringAsFixed(2);
       final total = _finalTotal.toStringAsFixed(2);
       final now = DateTime.now();
-      final orderDate = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final orderDate =
+          "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
       final lineItems = _buildLineItems();
 
@@ -1776,7 +1782,8 @@ class _HomePageState extends State<HomePage> {
       _savedDiscountAmount = _discountAmount;
       _savedIsPercentageMode = _isPercentageMode;
       if (_isPercentageMode) {
-        _savedDiscountPercentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+        _savedDiscountPercentage =
+            double.tryParse(_discountPercentageController.text) ?? 0.0;
       } else {
         _savedDiscountPercentage = null;
       }
@@ -1792,9 +1799,10 @@ class _HomePageState extends State<HomePage> {
       String discountValue = "0.00";
       String? totalDiscountValue;
       String? totalDiscountPercentage;
-      
+
       if (_isPercentageMode) {
-        final percentage = double.tryParse(_discountPercentageController.text) ?? 0.0;
+        final percentage =
+            double.tryParse(_discountPercentageController.text) ?? 0.0;
         if (percentage != 0) {
           final calculatedDiscount = _discountAmount;
           totalDiscountPercentage = percentage.toStringAsFixed(2);
@@ -1803,7 +1811,8 @@ class _HomePageState extends State<HomePage> {
         }
       } else {
         // Amount mode
-        final discountAmount = double.tryParse(_discountAmountController.text) ?? 0.0;
+        final discountAmount =
+            double.tryParse(_discountAmountController.text) ?? 0.0;
         if (discountAmount != 0) {
           discountValue = discountAmount.toStringAsFixed(2);
         }
@@ -1882,8 +1891,8 @@ class _HomePageState extends State<HomePage> {
       } else {
         final errorMessage =
             jsonResponse?['status_description'] ??
-                jsonResponse?['message'] ??
-                'Server returned status ${response.statusCode}';
+            jsonResponse?['message'] ??
+            'Server returned status ${response.statusCode}';
         throw Exception(errorMessage);
       }
     } on DioException catch (e) {
@@ -1902,8 +1911,8 @@ class _HomePageState extends State<HomePage> {
         } else {
           errorMessage =
               e.response?.data?['status_description'] ??
-                  e.response?.data?['message'] ??
-                  'Server error (${e.response?.statusCode})';
+              e.response?.data?['message'] ??
+              'Server error (${e.response?.statusCode})';
         }
       } else if (e.type == DioExceptionType.connectionTimeout) {
         errorMessage =
@@ -1945,14 +1954,18 @@ class _HomePageState extends State<HomePage> {
               if (value == 'transactions') {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const TransactionPage()),
+                  MaterialPageRoute(
+                    builder: (context) => const TransactionPage(),
+                  ),
                 );
               } else if (value == 'pending_payment') {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => const PendingTransactionPage()),
+                  MaterialPageRoute(
+                    builder: (context) => const PendingTransactionPage(),
+                  ),
                 );
-              }else if (value == 'overview') {
+              } else if (value == 'overview') {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => const OverviewPage()),
@@ -1967,7 +1980,7 @@ class _HomePageState extends State<HomePage> {
                   value: 'transactions',
                   child: Row(
                     children: [
-                      Icon(Icons.receipt_long, size: 20,color: Colors.red),
+                      Icon(Icons.receipt_long, size: 20, color: Colors.red),
                       SizedBox(width: 8),
                       Text('Transactions'),
                     ],
@@ -1977,7 +1990,11 @@ class _HomePageState extends State<HomePage> {
                   value: 'pending_payment',
                   child: Row(
                     children: [
-                      Icon(Icons.payments_outlined, size: 20, color: Colors.orange),
+                      Icon(
+                        Icons.payments_outlined,
+                        size: 20,
+                        color: Colors.orange,
+                      ),
                       SizedBox(width: 8),
                       Text('Pending Payments'),
                     ],
@@ -2017,10 +2034,7 @@ class _HomePageState extends State<HomePage> {
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
-              LogoutDialog.show(
-                context: context,
-                onLogout: onLogoutPressed,
-              );
+              LogoutDialog.show(context: context, onLogout: onLogoutPressed);
             },
           ),
         ],
@@ -2032,101 +2046,112 @@ class _HomePageState extends State<HomePage> {
             Expanded(
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 32.0,horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 32.0,
+                    horizontal: 16.0,
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _isLoadingCustomers
                           ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                          : Row(
-                        children: [
-                          Expanded(
-                            child: DropdownSearch<Customer>(
-                              selectedItem: _selectedCustomer,
-                              items: (filter, infiniteScrollProps) => _customers
-                                  .where(
-                                    (customer) => customer.name
-                                    .toLowerCase()
-                                    .contains(filter.toLowerCase()),
-                              )
-                                  .toList(),
-                              onChanged: (Customer? newValue) {
-                                _onCustomerSelected(newValue);
-                              },
-                              itemAsString: (Customer customer) => customer.name,
-                              compareFn: (Customer item1, Customer item2) =>
-                              item1.id == item2.id,
-                              decoratorProps: DropDownDecoratorProps(
-                                decoration: InputDecoration(
-                                  hintText: _customers.isEmpty
-                                      ? 'GUEST Customer'
-                                      : 'GUEST Customer',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.person),
-                                ),
+                              child: Padding(
+                                padding: EdgeInsets.all(16.0),
+                                child: CircularProgressIndicator(),
                               ),
-                              popupProps: PopupProps.menu(
-                                showSearchBox: true,
-                                searchFieldProps: TextFieldProps(
-                                  decoration: InputDecoration(
-                                    hintText: 'Search customers...',
-                                    prefixIcon: Icon(Icons.search),
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownSearch<Customer>(
+                                    selectedItem: _selectedCustomer,
+                                    items: (filter, infiniteScrollProps) =>
+                                        _customers
+                                            .where(
+                                              (customer) => customer.name
+                                                  .toLowerCase()
+                                                  .contains(
+                                                    filter.toLowerCase(),
+                                                  ),
+                                            )
+                                            .toList(),
+                                    onChanged: (Customer? newValue) {
+                                      _onCustomerSelected(newValue);
+                                    },
+                                    itemAsString: (Customer customer) =>
+                                        customer.name,
+                                    compareFn:
+                                        (Customer item1, Customer item2) =>
+                                            item1.id == item2.id,
+                                    decoratorProps: DropDownDecoratorProps(
+                                      decoration: InputDecoration(
+                                        hintText: _customers.isEmpty
+                                            ? 'GUEST Customer'
+                                            : 'GUEST Customer',
+                                        border: OutlineInputBorder(),
+                                        prefixIcon: Icon(Icons.person),
+                                      ),
+                                    ),
+                                    popupProps: PopupProps.menu(
+                                      showSearchBox: true,
+                                      searchFieldProps: TextFieldProps(
+                                        decoration: InputDecoration(
+                                          hintText: 'Search customers...',
+                                          prefixIcon: Icon(Icons.search),
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                // ElevatedButton(
+                                //   onPressed: _selectedCustomer != null ? _showCustomerDetails : null,
+                                //   style: ElevatedButton.styleFrom(
+                                //     backgroundColor: _selectedCustomer != null ? Colors.blue : Colors.grey,
+                                //     foregroundColor: Colors.white,
+                                //     padding: const EdgeInsets.all(8),
+                                //     shape: const CircleBorder(),
+                                //   ),
+                                //   child: const Icon(
+                                //     Icons.visibility,
+                                //     size: 30.0,
+                                //   ),
+                                // ),
+                                // const SizedBox(width: 12),
+                                ElevatedButton(
+                                  onPressed: _showAddCustomerDialog,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.all(8),
+                                    shape: const CircleBorder(),
+                                  ),
+                                  child: const Icon(
+                                    Icons.add,
+                                    size: 30.0, // Adjust the size as needed
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          // ElevatedButton(
-                          //   onPressed: _selectedCustomer != null ? _showCustomerDetails : null,
-                          //   style: ElevatedButton.styleFrom(
-                          //     backgroundColor: _selectedCustomer != null ? Colors.blue : Colors.grey,
-                          //     foregroundColor: Colors.white,
-                          //     padding: const EdgeInsets.all(8),
-                          //     shape: const CircleBorder(),
-                          //   ),
-                          //   child: const Icon(
-                          //     Icons.visibility,
-                          //     size: 30.0,
-                          //   ),
-                          // ),
-                          // const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: _showAddCustomerDialog,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.green,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(8),
-                              shape: const CircleBorder(),
-                            ),
-                            child: const Icon(
-                              Icons.add,
-                              size: 30.0, // Adjust the size as needed
-                            ),
-                          ),
-                        ],
-                      ),
                       const SizedBox(height: 16),
 
                       // Verify Contact No and Scan Fingerprint buttons
                       if (_selectedCustomer != null) ...[
                         Builder(
                           builder: (context) {
-                            final showVerifyContact = _selectedCustomer!.status != 'VERIFIED';
-                            final showScanFingerprint = _selectedCustomer!.fingerprintId != null && 
+                            final showVerifyContact =
+                                _selectedCustomer!.status != 'VERIFIED';
+                            final showScanFingerprint =
+                                _selectedCustomer!.fingerprintId != null &&
                                 _selectedCustomer!.fingerprintStatus != null &&
-                                _selectedCustomer!.fingerprintStatus != 'VERIFIED';
-                            
+                                _selectedCustomer!.fingerprintStatus !=
+                                    'VERIFIED';
+
                             // If both are VERIFIED, show nothing
                             if (!showVerifyContact && !showScanFingerprint) {
                               return const SizedBox.shrink();
                             }
-                            
+
                             // If both buttons should be shown, display them in a Row
                             if (showVerifyContact && showScanFingerprint) {
                               return Column(
@@ -2137,11 +2162,15 @@ class _HomePageState extends State<HomePage> {
                                         child: ElevatedButton.icon(
                                           onPressed: _resendOtp,
                                           icon: const Icon(Icons.verified_user),
-                                          label: const Text('Verify Contact No'),
+                                          label: const Text(
+                                            'Verify Contact No',
+                                          ),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Colors.orange,
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -2152,9 +2181,13 @@ class _HomePageState extends State<HomePage> {
                                           icon: const Icon(Icons.fingerprint),
                                           label: const Text('Scan Fingerprint'),
                                           style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xffd41818),
+                                            backgroundColor: const Color(
+                                              0xffd41818,
+                                            ),
                                             foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(vertical: 12),
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 12,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -2164,20 +2197,34 @@ class _HomePageState extends State<HomePage> {
                                 ],
                               );
                             }
-                            
+
                             // If only one button should be shown, display it full width
                             return Column(
                               children: [
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton.icon(
-                                    onPressed: showVerifyContact ? _resendOtp : _scanCustomerFingerprint,
-                                    icon: Icon(showVerifyContact ? Icons.verified_user : Icons.fingerprint),
-                                    label: Text(showVerifyContact ? 'Verify Contact No' : 'Scan Fingerprint'),
+                                    onPressed: showVerifyContact
+                                        ? _resendOtp
+                                        : _scanCustomerFingerprint,
+                                    icon: Icon(
+                                      showVerifyContact
+                                          ? Icons.verified_user
+                                          : Icons.fingerprint,
+                                    ),
+                                    label: Text(
+                                      showVerifyContact
+                                          ? 'Verify Contact No'
+                                          : 'Scan Fingerprint',
+                                    ),
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: showVerifyContact ? Colors.orange : const Color(0xffd41818),
+                                      backgroundColor: showVerifyContact
+                                          ? Colors.orange
+                                          : const Color(0xffd41818),
                                       foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2186,9 +2233,10 @@ class _HomePageState extends State<HomePage> {
                             );
                           },
                         ),
-                        
+
                         // OTP TextField and Verify button (shown when OTP is received)
-                        if (_receivedOtp != null && _receivedOtp!.isNotEmpty) ...[
+                        if (_receivedOtp != null &&
+                            _receivedOtp!.isNotEmpty) ...[
                           TextField(
                             controller: _otpController,
                             keyboardType: TextInputType.number,
@@ -2209,7 +2257,9 @@ class _HomePageState extends State<HomePage> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.green,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
                               ),
                             ),
                           ),
@@ -2234,7 +2284,6 @@ class _HomePageState extends State<HomePage> {
                       //   ),
                       //   const SizedBox(height: 16),
                       // ],
-
                       if (!_isLoadingItems) ...[
                         if (!_tileLayout) ...[
                           // Standard mode: Show dropdown, quantity controls, and Add to Cart button
@@ -2243,37 +2292,42 @@ class _HomePageState extends State<HomePage> {
                               Expanded(
                                 child: DropdownSearch<Item>(
                                   selectedItem: _selectedItem,
-                                  items: (filter, infiniteScrollProps) => _items
-                                      .where((item) {
-                                        // Filter by search text
-                                        if (!item.displayName.toLowerCase().contains(
-                                              filter.toLowerCase(),
-                                            )) {
-                                          return false;
-                                        }
-                                        
-                                        // For inventoried items, check if any inventory has stock > 0
-                                        if (item.inventoried) {
-                                          if (item.inventory.isEmpty) {
-                                            return false; // Skip if no inventory
-                                          }
-                                          // Check if at least one inventory has stock > 0
-                                          final hasStock = item.inventory.any((inventory) {
-                                            final stock = double.tryParse(inventory.stock) ?? 0.0;
-                                            return stock > 0;
-                                          });
-                                          return hasStock;
-                                        }
-                                        
-                                        // For non-inventoried items, include them
-                                        return true;
-                                      })
-                                      .toList(),
+                                  items: (filter, infiniteScrollProps) => _items.where((
+                                    item,
+                                  ) {
+                                    // Filter by search text
+                                    if (!item.displayName
+                                        .toLowerCase()
+                                        .contains(filter.toLowerCase())) {
+                                      return false;
+                                    }
+
+                                    // For inventoried items, check if any inventory has stock > 0
+                                    if (item.inventoried) {
+                                      if (item.inventory.isEmpty) {
+                                        return false; // Skip if no inventory
+                                      }
+                                      // Check if at least one inventory has stock > 0
+                                      final hasStock = item.inventory.any((
+                                        inventory,
+                                      ) {
+                                        final stock =
+                                            double.tryParse(inventory.stock) ??
+                                            0.0;
+                                        return stock > 0;
+                                      });
+                                      return hasStock;
+                                    }
+
+                                    // For non-inventoried items, include them
+                                    return true;
+                                  }).toList(),
                                   onChanged: (Item? newValue) {
                                     _onItemSelected(newValue);
                                   },
                                   itemAsString: (Item item) => item.displayName,
-                                  compareFn: (Item item1, Item item2) => item1.id == item2.id,
+                                  compareFn: (Item item1, Item item2) =>
+                                      item1.id == item2.id,
                                   decoratorProps: DropDownDecoratorProps(
                                     decoration: InputDecoration(
                                       hintText: _items.isEmpty
@@ -2348,10 +2402,14 @@ class _HomePageState extends State<HomePage> {
                           ),
                           const SizedBox(height: 16),
                           // Inventory cards for inventoried items
-                          if (_selectedItem != null && _selectedItem!.inventoried) ...[
+                          if (_selectedItem != null &&
+                              _selectedItem!.inventoried) ...[
                             Text(
                               'Select Batch:',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                             const SizedBox(height: 8),
                             SingleChildScrollView(
@@ -2359,105 +2417,120 @@ class _HomePageState extends State<HomePage> {
                               child: Row(
                                 children: _selectedItem!.inventory
                                     .where((inventory) {
-                                      final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                      final stock =
+                                          double.tryParse(inventory.stock) ??
+                                          0.0;
                                       return stock > 0;
                                     })
                                     .map((inventory) {
-                                  final isSelected =
-                                      _selectedInventory?.batchNumber ==
+                                      final isSelected =
+                                          _selectedInventory?.batchNumber ==
                                           inventory.batchNumber;
-                                  return GestureDetector(
-                                    onTap: () {
-                                      _onInventorySelected(inventory);
-                                    },
-                                    child: Container(
-                                      margin: const EdgeInsets.only(right: 2),
-                                      child: Card(
-                                      elevation: isSelected ? 4 : 1,
-                                      // color: isSelected ? Color(0xffd41818).withOpacity(0.1) : Colors.white,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                        side: BorderSide(
-                                          color: isSelected
-                                              ? Color(0xffd41818)
-                                              : Colors.grey.shade300,
-                                          width: isSelected ? 2 : 1,
-                                        ),
-                                      ),
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(16),
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-
-                                                Text(
-                                                  'Batch ${inventory.batchNumber}',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 14,
-                                                    // color: isSelected ? Color(0xffd41818) : Colors.black87,
+                                      return GestureDetector(
+                                        onTap: () {
+                                          _onInventorySelected(inventory);
+                                        },
+                                        child: Container(
+                                          margin: const EdgeInsets.only(
+                                            right: 2,
+                                          ),
+                                          child: Card(
+                                            elevation: isSelected ? 4 : 1,
+                                            // color: isSelected ? Color(0xffd41818).withOpacity(0.1) : Colors.white,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              side: BorderSide(
+                                                color: isSelected
+                                                    ? Color(0xffd41818)
+                                                    : Colors.grey.shade300,
+                                                width: isSelected ? 2 : 1,
+                                              ),
+                                            ),
+                                            child: Padding(
+                                              padding: const EdgeInsets.all(16),
+                                              child: Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Text(
+                                                        'Batch ${inventory.batchNumber}',
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 14,
+                                                          // color: isSelected ? Color(0xffd41818) : Colors.black87,
+                                                        ),
+                                                      ),
+                                                      if (isSelected) ...[
+                                                        const SizedBox(
+                                                          width: 8,
+                                                        ),
+                                                        Icon(
+                                                          Icons.check_circle,
+                                                          color: Color(
+                                                            0xffd41818,
+                                                          ),
+                                                          size: 20,
+                                                        ),
+                                                      ],
+                                                    ],
                                                   ),
-                                                ),
-                                                if (isSelected) ...[
-                                                  const SizedBox(width: 8),
-                                                  Icon(
-                                                    Icons.check_circle,
-                                                    color: Color(0xffd41818),
-                                                    size: 20,
+                                                  // const SizedBox(height: 6),
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.attach_money,
+                                                        // color: Colors.green.shade600,
+                                                        size: 12,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        'Rs. ${inventory.salesPrice}',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          fontWeight:
+                                                              FontWeight.w600,
+                                                          // color: Colors.green.shade700,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  // const SizedBox(height: 8),
+                                                  Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        Icons.inventory_2,
+                                                        // color: Colors.blue.shade600,
+                                                        size: 12,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        'Stock: ${inventory.stock}',
+                                                        style: TextStyle(
+                                                          fontSize: 12,
+                                                          // color: Colors.blue.shade700,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ],
-                                              ],
+                                              ),
                                             ),
-                                            // const SizedBox(height: 6),
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.attach_money,
-                                                  // color: Colors.green.shade600,
-                                                  size: 12,
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'Rs. ${inventory.salesPrice}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    // color: Colors.green.shade700,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                            // const SizedBox(height: 8),
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.inventory_2,
-                                                  // color: Colors.blue.shade600,
-                                                  size: 12,
-                                                ),
-                                                const SizedBox(width: 4),
-                                                Text(
-                                                  'Stock: ${inventory.stock}',
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    // color: Colors.blue.shade700,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ],
+                                          ),
                                         ),
-                                      ),
-                                    ),
-                                  ),
-                                );
-                                }).toList(),
+                                      );
+                                    })
+                                    .toList(),
                               ),
                             ),
                             const SizedBox(height: 16),
@@ -2493,7 +2566,8 @@ class _HomePageState extends State<HomePage> {
                                     hintText: 'Search items...',
                                     hintStyle: TextStyle(fontSize: 14),
                                     prefixIcon: Icon(Icons.search, size: 20),
-                                    suffixIcon: _tileSearchController.text.isNotEmpty
+                                    suffixIcon:
+                                        _tileSearchController.text.isNotEmpty
                                         ? IconButton(
                                             icon: Icon(Icons.close, size: 20),
                                             onPressed: () {
@@ -2504,7 +2578,10 @@ class _HomePageState extends State<HomePage> {
                                           )
                                         : null,
                                     border: OutlineInputBorder(),
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
                                     isDense: true,
                                   ),
                                   onChanged: (value) {
@@ -2529,43 +2606,60 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     );
                                   }
-                                  
-                                  final searchText = _tileSearchController.text.toLowerCase();
-                                  
+
+                                  final searchText = _tileSearchController.text
+                                      .toLowerCase();
+
                                   // Build a list of card data for efficient access
                                   List<_TileCardData> cardData = [];
                                   for (var item in _items) {
                                     // Filter by displayName if search text is provided
-                                    if (searchText.isNotEmpty && 
-                                        !item.displayName.toLowerCase().contains(searchText)) {
+                                    if (searchText.isNotEmpty &&
+                                        !item.displayName
+                                            .toLowerCase()
+                                            .contains(searchText)) {
                                       continue; // Skip items that don't match search
                                     }
-                                    
+
                                     if (item.inventoried) {
                                       // For inventoried items, only load if inventory array has objects
                                       if (item.inventory.isNotEmpty) {
                                         // Create a card for each inventory entry, but skip if stock is 0
                                         for (var inventory in item.inventory) {
-                                          final stock = double.tryParse(inventory.stock) ?? 0.0;
+                                          final stock =
+                                              double.tryParse(
+                                                inventory.stock,
+                                              ) ??
+                                              0.0;
                                           if (stock > 0) {
-                                            cardData.add(_TileCardData(item: item, inventory: inventory));
+                                            cardData.add(
+                                              _TileCardData(
+                                                item: item,
+                                                inventory: inventory,
+                                              ),
+                                            );
                                           }
                                         }
                                       }
                                       // If inventory is empty, skip this item (don't add to cardData)
                                     } else {
                                       // For non-inventoried items, create a single card with displayName and salesPrice
-                                      cardData.add(_TileCardData(item: item, inventory: null));
+                                      cardData.add(
+                                        _TileCardData(
+                                          item: item,
+                                          inventory: null,
+                                        ),
+                                      );
                                     }
                                   }
-                                  
+
                                   // Check if no items match the search
                                   if (cardData.isEmpty) {
                                     return Center(
                                       child: Padding(
                                         padding: const EdgeInsets.all(32.0),
                                         child: Text(
-                                          searchText.isNotEmpty 
+                                          searchText.isNotEmpty
                                               ? 'No items found matching "$searchText"'
                                               : 'No items available',
                                           style: TextStyle(fontSize: 16),
@@ -2573,19 +2667,26 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     );
                                   }
-                              
+
                                   // Calculate card width to ensure at least 3 cards per row
                                   const spacing = 6.0;
                                   const minCardsPerRow = 3;
                                   final availableWidth = constraints.maxWidth;
                                   // Calculate width for exactly 3 cards: (availableWidth - (spacing * 2)) / 3
                                   // This ensures at least 3 cards per row
-                                  final cardWidth = (availableWidth - (spacing * (minCardsPerRow - 1))) / minCardsPerRow;
-                                  
+                                  final cardWidth =
+                                      (availableWidth -
+                                          (spacing * (minCardsPerRow - 1))) /
+                                      minCardsPerRow;
+
                                   // Use MediaQuery to get available height and constrain the scroll view
-                                  final screenHeight = MediaQuery.of(context).size.height;
-                                  final maxHeight = screenHeight * 0.5; // Use 50% of screen height
-                                  
+                                  final screenHeight = MediaQuery.of(
+                                    context,
+                                  ).size.height;
+                                  final maxHeight =
+                                      screenHeight *
+                                      0.5; // Use 50% of screen height
+
                                   return ConstrainedBox(
                                     constraints: BoxConstraints(
                                       maxHeight: maxHeight,
@@ -2598,7 +2699,10 @@ class _HomePageState extends State<HomePage> {
                                           return SizedBox(
                                             width: cardWidth,
                                             child: data.inventory != null
-                                                ? _buildInventoryTileCard(data.item, data.inventory!)
+                                                ? _buildInventoryTileCard(
+                                                    data.item,
+                                                    data.inventory!,
+                                                  )
                                                 : _buildItemTileCard(data.item),
                                           );
                                         }).toList(),
@@ -2617,7 +2721,10 @@ class _HomePageState extends State<HomePage> {
                       if (_cartItems.isNotEmpty) ...[
                         Text(
                           'Cart',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Card(
@@ -2642,7 +2749,9 @@ class _HomePageState extends State<HomePage> {
                                       flex: 3,
                                       child: Text(
                                         'Item',
-                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
@@ -2650,7 +2759,9 @@ class _HomePageState extends State<HomePage> {
                                       flex: 3,
                                       child: Text(
                                         'Quantity',
-                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                         textAlign: TextAlign.center,
                                       ),
                                     ),
@@ -2658,7 +2769,9 @@ class _HomePageState extends State<HomePage> {
                                       flex: 2,
                                       child: Text(
                                         'Total',
-                                        style: TextStyle(fontWeight: FontWeight.bold),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -2682,7 +2795,8 @@ class _HomePageState extends State<HomePage> {
                                     ),
                                   ),
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       IconButton(
                                         icon: Icon(
@@ -2705,18 +2819,21 @@ class _HomePageState extends State<HomePage> {
                                             Expanded(
                                               child: Column(
                                                 crossAxisAlignment:
-                                                CrossAxisAlignment.start,
+                                                    CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
                                                     cartItem.itemDisplayName,
                                                     style: TextStyle(
-                                                      fontWeight: FontWeight.bold,
+                                                      fontWeight:
+                                                          FontWeight.bold,
                                                       fontSize: 13,
                                                     ),
                                                     maxLines: 2,
-                                                    overflow: TextOverflow.ellipsis,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
-                                                  if (cartItem.batchNumber != null) ...[
+                                                  if (cartItem.batchNumber !=
+                                                      null) ...[
                                                     SizedBox(height: 2),
                                                     Text(
                                                       'Batch: ${cartItem.batchNumber}',
@@ -2724,7 +2841,8 @@ class _HomePageState extends State<HomePage> {
                                                         fontSize: 12,
                                                         color: Colors.grey[600],
                                                       ),
-                                                      overflow: TextOverflow.ellipsis,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
                                                     ),
                                                   ],
                                                   SizedBox(height: 2),
@@ -2734,7 +2852,8 @@ class _HomePageState extends State<HomePage> {
                                                       fontSize: 12,
                                                       color: Colors.grey[600],
                                                     ),
-                                                    overflow: TextOverflow.ellipsis,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                   ),
                                                 ],
                                               ),
@@ -2749,7 +2868,10 @@ class _HomePageState extends State<HomePage> {
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
                                             IconButton(
-                                              icon: Icon(Icons.remove, size: 16),
+                                              icon: Icon(
+                                                Icons.remove,
+                                                size: 16,
+                                              ),
                                               onPressed: () => _updateQuantity(
                                                 index,
                                                 cartItem.quantity - 1,
@@ -2808,7 +2930,8 @@ class _HomePageState extends State<HomePage> {
                               children: [
                                 // Final total
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       'Subtotal Amount:',
@@ -2840,37 +2963,48 @@ class _HomePageState extends State<HomePage> {
                                   children: [
                                     // Toggle button
                                     Material(
-                                      color: _isPercentageMode 
-                                          ? Colors.blue[100] 
+                                      color: _isPercentageMode
+                                          ? Colors.blue[100]
                                           : Colors.green[100],
                                       borderRadius: BorderRadius.circular(8),
                                       child: InkWell(
                                         onTap: () {
                                           setState(() {
-                                            _isPercentageMode = !_isPercentageMode;
+                                            _isPercentageMode =
+                                                !_isPercentageMode;
                                             if (_isPercentageMode) {
-                                              _discountAmountController.text = '0';
+                                              _discountAmountController.text =
+                                                  '0';
                                             } else {
-                                              _discountPercentageController.text = '0';
+                                              _discountPercentageController
+                                                      .text =
+                                                  '0';
                                             }
                                           });
                                         },
                                         borderRadius: BorderRadius.circular(8),
                                         child: Container(
-                                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 12,
+                                          ),
                                           decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
                                             border: Border.all(
-                                              color: _isPercentageMode 
-                                                  ? Colors.blue[300]! 
+                                              color: _isPercentageMode
+                                                  ? Colors.blue[300]!
                                                   : Colors.green[300]!,
                                               width: 2,
                                             ),
                                           ),
                                           child: Icon(
-                                            _isPercentageMode ? Icons.percent : Icons.attach_money,
-                                            color: _isPercentageMode 
-                                                ? Colors.blue[700] 
+                                            _isPercentageMode
+                                                ? Icons.percent
+                                                : Icons.attach_money,
+                                            color: _isPercentageMode
+                                                ? Colors.blue[700]
                                                 : Colors.green[700],
                                             size: 24,
                                           ),
@@ -2883,13 +3017,22 @@ class _HomePageState extends State<HomePage> {
                                       Expanded(
                                         flex: 2,
                                         child: TextField(
-                                          controller: _discountPercentageController,
-                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          controller:
+                                              _discountPercentageController,
+                                          keyboardType:
+                                              TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
                                           decoration: InputDecoration(
-                                            labelText: 'Discount Percentage (%)',
+                                            labelText:
+                                                'Discount Percentage (%)',
                                             hintText: '0',
                                             border: OutlineInputBorder(),
-                                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 8,
+                                                ),
                                           ),
                                           onChanged: (value) {
                                             setState(() {});
@@ -2900,16 +3043,21 @@ class _HomePageState extends State<HomePage> {
                                       Expanded(
                                         flex: 2,
                                         child: Container(
-                                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 12,
+                                          ),
                                           decoration: BoxDecoration(
-                                            border: Border.all(color: Colors.grey),
-                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(
+                                              color: Colors.grey,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
                                           child: Text(
                                             'Rs. ${_discountAmount.toStringAsFixed(2)}',
-                                            style: TextStyle( 
-                                              fontSize: 14,
-                                            ),
+                                            style: TextStyle(fontSize: 14),
                                             textAlign: TextAlign.end,
                                           ),
                                         ),
@@ -2918,12 +3066,19 @@ class _HomePageState extends State<HomePage> {
                                       Expanded(
                                         child: TextField(
                                           controller: _discountAmountController,
-                                          keyboardType: TextInputType.numberWithOptions(decimal: true),
+                                          keyboardType:
+                                              TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
                                           decoration: InputDecoration(
                                             labelText: 'Discount Amount (Rs.)',
                                             hintText: '0',
                                             border: OutlineInputBorder(),
-                                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            contentPadding:
+                                                EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 8,
+                                                ),
                                           ),
                                           onChanged: (value) {
                                             setState(() {});
@@ -2936,7 +3091,8 @@ class _HomePageState extends State<HomePage> {
 
                                 const SizedBox(height: 16),
                                 Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       'Total Amount:',
@@ -3126,38 +3282,29 @@ class _HomePageState extends State<HomePage> {
                             ),
                           ),
                           const SizedBox(width: 12),
-                          // Expanded(
-                          //   child: ElevatedButton.icon(
-                          //     onPressed: () async {
-                          //       final discountPercentage = _isPercentageMode
-                          //           ? double.tryParse(_discountPercentageController.text) ?? 0.0
-                          //           : null;
-                          //       await BillPrinterService.printBill(
-                          //         context: context,
-                          //         cartItems: _cartItems,
-                          //         customer: _selectedCustomer,
-                          //         total: _finalTotal,
-                          //         subtotal: _cartItemsTotal,
-                          //         discountPercentage: discountPercentage,
-                          //         discountAmount: _discountAmount,
-                          //         isPercentageMode: _isPercentageMode,
-                          //         businessName: businessName,
-                          //         contactNumber: contactNumber,
-                          //         address: address,
-                          //       );
-                          //     },
-                          //     icon: Icon(Icons.print),
-                          //     label: Text('Print'),
-                          //     style: ElevatedButton.styleFrom(
-                          //       backgroundColor: Colors.blue,
-                          //       foregroundColor: Colors.white,
-                          //       padding: EdgeInsets.symmetric(vertical: 14),
-                          //       shape: RoundedRectangleBorder(
-                          //         borderRadius: BorderRadius.circular(8),
-                          //       ),
-                          //     ),
-                          //   ),
-                          // ),
+                          if (businessType == 'RESTAURANT')
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () async {
+                                  await BillPrinterService.printKOTBill(
+                                    context: context,
+                                    transactionId:_getCurrentTransactionId(),
+                                    cartItems: _cartItems,
+                                    customer: _selectedCustomer,
+                                  );
+                                },
+                                icon: Icon(Icons.print),
+                                label: Text('KOT'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
 
                           // const SizedBox(width: 12),
                           // Expanded(
@@ -3194,23 +3341,19 @@ class _HomePageState extends State<HomePage> {
                         ],
                       ),
                       const SizedBox(height: 72),
-
                     ],
                   ),
                 ),
               ),
             ),
-            
+
             // Copyright at the bottom
             Padding(
               padding: const EdgeInsets.all(8),
               child: Center(
                 child: Text(
                   '©${DateTime.now().year} JPosLite. All rights reserved.',
-                  style: TextStyle(
-                    fontSize: 12.0,
-                    color: Colors.grey[500],
-                  ),
+                  style: TextStyle(fontSize: 12.0, color: Colors.grey[500]),
                 ),
               ),
             ),
