@@ -752,4 +752,274 @@ class BillPrinterService {
       if (onError != null) onError();
     }
   }
+
+  /// Print KOT bill from cart items and payment data
+  static Future<void> printKOTBill({
+    required BuildContext context,
+    required List<CartItem> cartItems,
+    Customer? customer,
+    // required double total,
+    // double? subtotal,
+    // double? discountPercentage,
+    // double? discountAmount,
+    // bool? isPercentageMode,
+    // double? cashPayment,
+    // double? cardPayment,
+    // double? bankPayment,
+    // double? voucherPayment,
+    // double? chequePayment,
+    // double? balance,
+    String? transactionId,
+    String? orderDate,
+    // String? address,
+    // String? businessName,
+    // String? contactNumber,
+    VoidCallback? onSuccess,
+    VoidCallback? onError,
+  }) async {
+    // Check if Bluetooth device is connected
+    BluetoothDevice? connectedDevice = PrintDialog.getConnectedDevice();
+    if (connectedDevice == null) {
+      SnackbarManager.showError(
+        context,
+        message:
+        'No Bluetooth printer connected. Please connect a printer first.',
+      );
+      if (onError != null) onError();
+      return;
+    }
+
+    // Check if items are added to cart
+    if (cartItems.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please add items to cart before printing.',
+      );
+      if (onError != null) onError();
+      return;
+    }
+
+    print('🖨️ Starting direct print process...');
+
+    try {
+      // Check if device is still connected
+      BluetoothConnectionState connectionState =
+      await connectedDevice.connectionState.first;
+      if (connectionState != BluetoothConnectionState.connected) {
+        SnackbarManager.showError(
+          context,
+          message: 'Bluetooth printer disconnected. Please reconnect.',
+        );
+        if (onError != null) onError();
+        return;
+      }
+
+      // Get business name and contact number
+      // final prefs = await SharedPreferences.getInstance();
+      // final finalBusinessName = businessName ?? prefs.getString('businessName') ?? 'Business Name';
+      // final finalContactNumber = contactNumber ?? prefs.getString('contactNumber') ?? '';
+      // final finalAddress = address ?? prefs.getString('address') ?? '';
+
+      // Generate print content
+      String printContent = generateKOTBillContent(
+        cartItems: cartItems,
+        customer: customer,
+        // total: total,
+        // subtotal: subtotal,
+        // discountPercentage: discountPercentage,
+        // discountAmount: discountAmount,
+        // isPercentageMode: isPercentageMode,
+        // cashPayment: cashPayment,
+        // cardPayment: cardPayment,
+        // bankPayment: bankPayment,
+        // voucherPayment: voucherPayment,
+        // chequePayment: chequePayment,
+        // balance: balance,
+        transactionId: transactionId,
+        orderDate: orderDate,
+      );
+
+      // Generate print bytes with business name and logo using the print service
+      List<int> printData = await PrintService.generateKOTPrintBytes(
+        businessName: 'Kitchen Order Ticket',
+        content: printContent,
+      );
+
+      // Find printer characteristic
+      BluetoothCharacteristic? printerCharacteristic =
+      await findPrinterCharacteristic(connectedDevice);
+
+      if (printerCharacteristic == null) {
+        throw Exception('No writable characteristic found for printing');
+      }
+
+      // Send data to printer
+      await sendDataInChunks(printerCharacteristic, printData);
+
+      if (context.mounted) {
+        SnackbarManager.showSuccess(
+          context,
+          message: 'Bill printed successfully!',
+        );
+      }
+
+      print('✅ Print job completed successfully');
+      if (onSuccess != null) onSuccess();
+    } catch (e) {
+      print('❌ ERROR: Failed to print: $e');
+      if (context.mounted) {
+        SnackbarManager.showError(context, message: 'Print failed: $e');
+      }
+      if (onError != null) onError();
+    }
+  }
+
+  static String generateKOTBillContent({
+    required List<CartItem> cartItems,
+    Customer? customer,
+    String? transactionId,
+    String? orderDate,
+  }) {
+    StringBuffer content = StringBuffer();
+    int totalWidth = 32; // Total width for alignment
+
+    content.writeln('-' * totalWidth);
+    // Customer info
+    String customerStr = customer != null ? customer.name : 'GUEST';
+    int customerSpace = totalWidth - customerStr.length - ('Customer:').length;
+    content.writeln('Customer:' + ' ' * customerSpace + customerStr);
+
+    // Transaction ID
+    final finalTransactionId = transactionId ?? DateTime.now().millisecondsSinceEpoch.toString();
+    String transactionIdLabel = 'Bill No:';
+    int transactionIdSpace = totalWidth - transactionIdLabel.length - finalTransactionId.length;
+    content.writeln(transactionIdLabel + ' ' * transactionIdSpace + finalTransactionId);
+
+    // Time (current) in dd-MM-yyyy h:mm a
+    final now = DateTime.now();
+    final timeStr = _formatDateTime(now);
+    String dateTimeTitle = 'Time:';
+    int dateTimeTotalSpaces =
+    (totalWidth - dateTimeTitle.length - timeStr.length);
+    content.writeln(dateTimeTitle + ' ' * dateTimeTotalSpaces + timeStr);
+
+    // Items
+    content.writeln('-' * totalWidth);
+    for (var item in cartItems) {
+      String? batchNoStr = '';
+      if (item.batchNumber != null) {
+        batchNoStr = '-${item.batchNumber}';
+      }
+
+      String displayNameStr = item.itemDisplayName + batchNoStr;
+      String qtyStr = (item.quantity).toString();
+      // int displayNameSpace = totalWidth - displayNameStr.length - qtyStr.length;
+      // content.writeln(displayNameStr + ' ' * displayNameSpace + qtyStr);
+
+      if ((displayNameStr.length + qtyStr.length + 1) <= totalWidth) {
+        int space = totalWidth - displayNameStr.length - qtyStr.length;
+        content.writeln(displayNameStr + (' ' * space) + qtyStr);
+      } else {
+        int nameWidth = totalWidth - qtyStr.length - 1;
+
+        String remainingName = displayNameStr;
+
+        while (remainingName.length > nameWidth) {
+          content.writeln(remainingName.substring(0, totalWidth));
+          remainingName = remainingName.substring(totalWidth);
+        }
+        int finalSpace = totalWidth - remainingName.length - qtyStr.length;
+        content.writeln(remainingName + (' ' * finalSpace) + qtyStr);
+      }
+
+      // Quantity and price
+      // String qtyPriceStr = '(${item.quantity} x ${item.salesPrice})';
+      // int qtyPriceSpace = totalWidth - qtyPriceStr.length - totalStr.length;
+      // content.writeln(qtyPriceStr + ' ' * qtyPriceSpace + totalStr);
+    }
+
+    // Totals
+    content.writeln('-' * totalWidth);
+
+    // Subtotal
+    // final finalSubtotal = subtotal ?? total;
+    // String subtotalLabel = 'Subtotal:';
+    // String subtotalStr = finalSubtotal.toStringAsFixed(2);
+    // int subtotalSpace = totalWidth - subtotalLabel.length - subtotalStr.length;
+    // content.writeln(subtotalLabel + ' ' * subtotalSpace + subtotalStr);
+
+    // Discount (only show if > 0)
+    // final finalIsPercentageMode = isPercentageMode ?? false;
+    // final finalDiscountAmount = discountAmount ?? 0.0;
+    // final finalDiscountPercentage = discountPercentage ?? 0.0;
+
+    // if (finalDiscountAmount > 0) {
+    //   String discountLine;
+    //   if (finalIsPercentageMode && finalDiscountPercentage > 0) {
+    //     // Format: "Discount 5% 120.00"
+    //     String discountLabel = 'Discount ${finalDiscountPercentage.toStringAsFixed(0)}%:';
+    //     String discountStr = finalDiscountAmount.toStringAsFixed(2);
+    //     int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+    //     discountLine = discountLabel + ' ' * discountSpace + discountStr;
+    //   } else {
+    //     // Format: "Discount 120.00"
+    //     String discountLabel = 'Discount:';
+    //     String discountStr = finalDiscountAmount.toStringAsFixed(2);
+    //     int discountSpace = totalWidth - discountLabel.length - discountStr.length;
+    //     discountLine = discountLabel + ' ' * discountSpace + discountStr;
+    //   }
+    //   content.writeln(discountLine);
+    // }
+
+    // Total
+    // String totalLabel = 'Total:';
+    // String totalStr = total.toStringAsFixed(2);
+    // int totalSpace = totalWidth - totalLabel.length - totalStr.length;
+    // content.writeln(totalLabel + ' ' * totalSpace + totalStr);
+    //
+    // // Payment information
+    // if (cashPayment != null && cashPayment > 0) {
+    //   String cashLabel = 'Cash Payment:';
+    //   String cashStr = cashPayment.toStringAsFixed(2);
+    //   int cashSpace = totalWidth - cashLabel.length - cashStr.length;
+    //   content.writeln(cashLabel + ' ' * cashSpace + cashStr);
+    // }
+    // if (cardPayment != null && cardPayment > 0) {
+    //   String cardLabel = 'Card Payment:';
+    //   String cardStr = cardPayment.toStringAsFixed(2);
+    //   int cardSpace = totalWidth - cardLabel.length - cardStr.length;
+    //   content.writeln(cardLabel + ' ' * cardSpace + cardStr);
+    // }
+    // if (bankPayment != null && bankPayment > 0) {
+    //   String bankLabel = 'Bank Payment:';
+    //   String bankStr = bankPayment.toStringAsFixed(2);
+    //   int bankSpace = totalWidth - bankLabel.length - bankStr.length;
+    //   content.writeln(bankLabel + ' ' * bankSpace + bankStr);
+    // }
+    // if (voucherPayment != null && voucherPayment > 0) {
+    //   String voucherLabel = 'Voucher Payment:';
+    //   String voucherStr = voucherPayment.toStringAsFixed(2);
+    //   int voucherSpace = totalWidth - voucherLabel.length - voucherStr.length;
+    //   content.writeln(voucherLabel + ' ' * voucherSpace + voucherStr);
+    // }
+    // if (chequePayment != null && chequePayment > 0) {
+    //   String chequeLabel = 'Cheque Payment:';
+    //   String chequeStr = chequePayment.toStringAsFixed(2);
+    //   int chequeSpace = totalWidth - chequeLabel.length - chequeStr.length;
+    //   content.writeln(chequeLabel + ' ' * chequeSpace + chequeStr);
+    // }
+    //
+    // // Balance (always display, default to 0.00 if null)
+    // final balanceValue = balance ?? 0.0;
+    // String balanceLabel = 'Balance:';
+    // String balanceStr = balanceValue.toStringAsFixed(2);
+    // int balanceSpace = totalWidth - balanceLabel.length - balanceStr.length;
+    // content.writeln(balanceLabel + ' ' * balanceSpace + balanceStr);
+    // content.writeln('-' * totalWidth);
+    //
+    // content.writeln('Thank you for your purchase!');
+    // content.writeln('Software by JSOFT.LK');
+
+    return content.toString();
+  }
 }

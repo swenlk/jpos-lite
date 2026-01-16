@@ -235,7 +235,7 @@ class PrintService {
         } else {
           // Check if line should be centered (e.g., "Thank you" section)
           final shouldCenter = line.contains('Thank you') || line.contains('Software by');
-          
+
           if (shouldCenter && !isThankYouSection) {
             // Start centering for thank you section
             isThankYouSection = true;
@@ -387,6 +387,18 @@ class PrintService {
       logoPath: logoPath,
       contactNumber: contactNumber,
       address: address,
+      paperSize: paperSize,
+    );
+  }
+
+  static Future<List<int>> generateKOTPrintBytes({
+    required String businessName,
+    required String content,
+    PaperSize paperSize = PaperSize.mm58,
+  }) async {
+    return generatePrintBytes(
+      businessName: businessName,
+      content: content,
       paperSize: paperSize,
     );
   }
