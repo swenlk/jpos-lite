@@ -16,6 +16,7 @@ import 'package:lite/utils/print_service.dart';
 import 'package:lite/utils/snackbar_manager.dart';
 import 'package:lite/utils/bill_printer_service.dart';
 import 'package:lite/widgets/add_customer_dialog.dart';
+import 'package:lite/widgets/add_vehicle_dialog.dart';
 import 'package:lite/widgets/clear_confirmation_dialog.dart';
 import 'package:lite/widgets/logout_dialog.dart';
 import 'package:lite/widgets/print_dialog.dart';
@@ -217,6 +218,25 @@ class _HomePageState extends State<HomePage> {
           },
           fingerprintEnabled: _fingerprintEnabled,
         );
+      },
+    );
+  }
+
+  Future<void> _showAddVehicleDialog() async {
+    if (_selectedCustomer == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please select a customer first.',
+      );
+      return;
+    }
+
+    AddVehicleDialog.show(
+      context: context,
+      customerId: _selectedCustomer!.id,
+      onSave: () {
+        // Sync data to refresh customer list
+        _syncData();
       },
     );
   }
@@ -2135,7 +2155,7 @@ class _HomePageState extends State<HomePage> {
                             ),
                       const SizedBox(height: 16),
 
-                      // Verify Contact No and Scan Fingerprint buttons
+                      // Verify Contact No, Add New Vehicle, and Scan Fingerprint buttons
                       if (_selectedCustomer != null) ...[
                         Builder(
                           builder: (context) {
@@ -2146,51 +2166,81 @@ class _HomePageState extends State<HomePage> {
                                 _selectedCustomer!.fingerprintStatus != null &&
                                 _selectedCustomer!.fingerprintStatus !=
                                     'VERIFIED';
+                            final showAddVehicle =
+                                businessType == 'CAR_WASH';
 
-                            // If both are VERIFIED, show nothing
-                            if (!showVerifyContact && !showScanFingerprint) {
+                            // If all are VERIFIED and not CAR_WASH, show nothing
+                            if (!showVerifyContact && !showScanFingerprint && !showAddVehicle) {
                               return const SizedBox.shrink();
                             }
 
-                            // If both buttons should be shown, display them in a Row
-                            if (showVerifyContact && showScanFingerprint) {
+                            // Count how many buttons to show
+                            int buttonCount = 0;
+                            if (showVerifyContact) buttonCount++;
+                            if (showAddVehicle) buttonCount++;
+                            if (showScanFingerprint) buttonCount++;
+
+                            // If multiple buttons, display them in a Row
+                            if (buttonCount > 1) {
                               return Column(
                                 children: [
                                   Row(
                                     children: [
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed: _resendOtp,
-                                          icon: const Icon(Icons.verified_user),
-                                          label: const Text(
-                                            'Verify Contact No',
-                                          ),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.orange,
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
+                                      if (showVerifyContact) ...[
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: _resendOtp,
+                                            icon: const Icon(Icons.verified_user),
+                                            label: const Text(
+                                              'Verify Contact No',
+                                            ),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.orange,
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(
+                                                vertical: 12,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: ElevatedButton.icon(
-                                          onPressed: _scanCustomerFingerprint,
-                                          icon: const Icon(Icons.fingerprint),
-                                          label: const Text('Scan Fingerprint'),
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(
-                                              0xffd41818,
-                                            ),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              vertical: 12,
+                                        if (showAddVehicle || showScanFingerprint)
+                                          const SizedBox(width: 12),
+                                      ],
+                                      if (showAddVehicle) ...[
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: _showAddVehicleDialog,
+                                            icon: const Icon(Icons.directions_car),
+                                            label: const Text('Add New Vehicle'),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.blue,
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(
+                                                vertical: 12,
+                                              ),
                                             ),
                                           ),
                                         ),
-                                      ),
+                                        if (showScanFingerprint)
+                                          const SizedBox(width: 12),
+                                      ],
+                                      if (showScanFingerprint)
+                                        Expanded(
+                                          child: ElevatedButton.icon(
+                                            onPressed: _scanCustomerFingerprint,
+                                            icon: const Icon(Icons.fingerprint),
+                                            label: const Text('Scan Fingerprint'),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(
+                                                0xffd41818,
+                                              ),
+                                              foregroundColor: Colors.white,
+                                              padding: const EdgeInsets.symmetric(
+                                                vertical: 12,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                   const SizedBox(height: 16),
@@ -2206,21 +2256,29 @@ class _HomePageState extends State<HomePage> {
                                   child: ElevatedButton.icon(
                                     onPressed: showVerifyContact
                                         ? _resendOtp
-                                        : _scanCustomerFingerprint,
+                                        : (showAddVehicle
+                                            ? _showAddVehicleDialog
+                                            : _scanCustomerFingerprint),
                                     icon: Icon(
                                       showVerifyContact
                                           ? Icons.verified_user
-                                          : Icons.fingerprint,
+                                          : (showAddVehicle
+                                              ? Icons.directions_car
+                                              : Icons.fingerprint),
                                     ),
                                     label: Text(
                                       showVerifyContact
                                           ? 'Verify Contact No'
-                                          : 'Scan Fingerprint',
+                                          : (showAddVehicle
+                                              ? 'Add New Vehicle'
+                                              : 'Scan Fingerprint'),
                                     ),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: showVerifyContact
                                           ? Colors.orange
-                                          : const Color(0xffd41818),
+                                          : (showAddVehicle
+                                              ? Colors.blue
+                                              : const Color(0xffd41818)),
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
                                         vertical: 12,

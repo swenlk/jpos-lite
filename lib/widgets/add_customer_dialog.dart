@@ -21,6 +21,7 @@ class AddCustomerDialog extends StatefulWidget {
 
 class _AddCustomerDialogState extends State<AddCustomerDialog> {
   String? activeToken;
+  String? businessType;
   bool _skipVerification = true;
   bool _isLoading = false;
   bool _otpSent = false;
@@ -29,10 +30,12 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
   String? _fingerprintId;
   String? _fingerprintStatus;
   bool _customerCreated = false;
+  bool _showVehicleNumberField = false;
 
   final _nameController = TextEditingController();
   final _contactController = TextEditingController();
   final _otpController = TextEditingController();
+  final _vehicleNumberController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -46,6 +49,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     _nameController.dispose();
     _contactController.dispose();
     _otpController.dispose();
+    _vehicleNumberController.dispose();
     super.dispose();
   }
 
@@ -53,7 +57,9 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       activeToken = prefs.getString('activeToken');
+      businessType = prefs.getString('businessType');
       print('token - ${activeToken}');
+      print('businessType - ${businessType}');
     });
   }
 
@@ -121,6 +127,9 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
             print('✅ Fingerprint data received - ID: $_fingerprintId, Status: $_fingerprintStatus');
           }
 
+          // Store customer ID for vehicle number submission
+          _customerId = customerData['_id']?.toString();
+          
           if (_skipVerification) {
             // Always call onSave to refresh the customer list
             widget.onSave(
@@ -128,31 +137,41 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
               _contactController.text.trim(),
             );
             
-            // Mark customer as created and disable Save button
+            // Mark customer as created
             setState(() {
               _customerCreated = true;
             });
             
-            // If fingerprint is enabled and fingerprint data is present, keep dialog open for scanning
-            if (widget.fingerprintEnabled && _fingerprintId != null && _fingerprintId!.isNotEmpty) {
+            // Check if businessType is CAR_WASH and show vehicle number field
+            if (businessType == 'CAR_WASH') {
+              setState(() {
+                _showVehicleNumberField = true;
+              });
               SnackbarManager.showSuccess(
                 context,
-                message: 'Customer created successfully! You can now scan the fingerprint.',
+                message: 'Customer created successfully! Please enter vehicle number.',
               );
             } else {
-              // Success - close dialog and show success message
-              SnackbarManager.showSuccess(
-                context,
-                message: 'Customer created successfully!',
-              );
-              Navigator.of(context).pop();
+              // If fingerprint is enabled and fingerprint data is present, keep dialog open for scanning
+              if (widget.fingerprintEnabled && _fingerprintId != null && _fingerprintId!.isNotEmpty) {
+                SnackbarManager.showSuccess(
+                  context,
+                  message: 'Customer created successfully! You can now scan the fingerprint.',
+                );
+              } else {
+                // Success - close dialog and show success message
+                SnackbarManager.showSuccess(
+                  context,
+                  message: 'Customer created successfully!',
+                );
+                Navigator.of(context).pop();
+              }
             }
           } else {
             // OTP verification required
             setState(() {
               _otpSent = true;
               _receivedOtp = customerData['otp']?.toString();
-              _customerId = customerData['_id']?.toString();
             });
             SnackbarManager.showSuccess(
               context,
@@ -266,7 +285,20 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
             _nameController.text.trim(),
             _contactController.text.trim(),
           );
-          Navigator.of(context).pop();
+          
+          // Check if businessType is CAR_WASH and show vehicle number field
+          if (businessType == 'CAR_WASH') {
+            setState(() {
+              _showVehicleNumberField = true;
+              _otpSent = false; // Hide OTP field
+            });
+            SnackbarManager.showInfo(
+              context,
+              message: 'Please enter vehicle number.',
+            );
+          } else {
+            Navigator.of(context).pop();
+          }
         } else {
           final errorMessage = jsonResponse['status_description'] ??
               'Failed to verify customer';
@@ -307,10 +339,121 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
   }
 
   void _handleButtonPress() {
-    if (!_skipVerification && _otpSent) {
+    if (_showVehicleNumberField) {
+      _saveVehicleNumber();
+    } else if (!_skipVerification && _otpSent) {
       _verifyCustomer();
     } else {
       _createCustomer();
+    }
+  }
+
+  Future<void> _saveVehicleNumber() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (activeToken == null || _customerId == null) {
+      SnackbarManager.showError(
+        context,
+        message: 'Missing required information. Please try again.',
+      );
+      return;
+    }
+
+    final vehicleNumber = _vehicleNumberController.text.trim();
+    if (vehicleNumber.isEmpty) {
+      SnackbarManager.showError(
+        context,
+        message: 'Please enter vehicle number.',
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final dio = Dio();
+      dio.options.connectTimeout = const Duration(seconds: 30);
+      dio.options.receiveTimeout = const Duration(seconds: 30);
+
+      final requestBody = {
+        'activeToken': activeToken ?? '',
+        'customerId': _customerId ?? '',
+        'value': vehicleNumber,
+      };
+
+      print('📡 Calling add_info API with: $requestBody');
+
+      final response = await dio.post(
+        AppConfigs.baseUrl + ApiEndpoints.addInfo,
+        data: requestBody,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          validateStatus: (status) {
+            return status != null && status < 500;
+          },
+        ),
+      );
+
+      print('✅ Add info response: ${response.statusCode}');
+      print('Response data: ${response.data}');
+
+      final jsonResponse = response.data;
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (jsonResponse['status_code'] == 'S1000') {
+          // Call onSave to trigger _syncData, just like when creating a customer
+          widget.onSave(
+            _nameController.text.trim(),
+            _contactController.text.trim(),
+          );
+          SnackbarManager.showSuccess(
+            context,
+            message: 'Vehicle number saved successfully!',
+          );
+          Navigator.of(context).pop();
+        } else {
+          final errorMessage = jsonResponse['status_description'] ??
+              'Failed to save vehicle number';
+          SnackbarManager.showError(context, message: errorMessage);
+        }
+      } else {
+        final errorMessage = jsonResponse['status_description'] ??
+            jsonResponse['message'] ??
+            'Server returned status ${response.statusCode}';
+        SnackbarManager.showError(context, message: errorMessage);
+      }
+    } on DioException catch (e) {
+      print('❌ DioException during save vehicle number: $e');
+      String errorMessage = 'Error saving vehicle number';
+      if (e.response != null) {
+        final errorResponse = e.response!.data;
+        errorMessage = errorResponse['status_description'] ??
+            errorResponse['message'] ??
+            'Server error';
+      } else if (e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        errorMessage = 'Connection timeout. Please try again.';
+      } else {
+        errorMessage = 'Connection error. Please check your internet connection.';
+      }
+      SnackbarManager.showError(context, message: errorMessage);
+    } catch (e) {
+      print('❌ Unexpected error: $e');
+      SnackbarManager.showError(
+        context,
+        message: 'An unexpected error occurred. Please try again.',
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -583,7 +726,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                 ],
 
                 // OTP text field (only shown when verification is not skipped and OTP is sent)
-                if (!_skipVerification && _otpSent) ...[
+                if (!_skipVerification && _otpSent && !_showVehicleNumberField) ...[
                   const SizedBox(height: 16.0),
                   TextFormField(
                     controller: _otpController,
@@ -612,9 +755,48 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                       ),
                     ),
                     validator: (value) {
-                      if (!_skipVerification && _otpSent) {
+                      if (!_skipVerification && _otpSent && !_showVehicleNumberField) {
                         if (value == null || value.trim().isEmpty) {
                           return 'Please enter the OTP';
+                        }
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+
+                // Vehicle Number field (only shown for CAR_WASH business type)
+                if (_showVehicleNumberField) ...[
+                  const SizedBox(height: 16.0),
+                  TextFormField(
+                    controller: _vehicleNumberController,
+                    decoration: InputDecoration(
+                      labelText: 'Vehicle Number',
+                      hintText: 'Enter vehicle number',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                        borderSide: const BorderSide(
+                          color: Colors.blue,
+                          width: 2.0,
+                        ),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 12.0,
+                      ),
+                    ),
+                    validator: (value) {
+                      if (_showVehicleNumberField) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Please enter vehicle number';
                         }
                       }
                       return null;
@@ -674,7 +856,7 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                           borderRadius: BorderRadius.circular(8.0),
                         ),
                         child: TextButton(
-                          onPressed: (_isLoading || (_customerCreated && widget.fingerprintEnabled)) 
+                          onPressed: (_isLoading || (_customerCreated && widget.fingerprintEnabled && !_showVehicleNumberField)) 
                               ? null 
                               : _handleButtonPress,
                           style: TextButton.styleFrom(
@@ -695,9 +877,11 @@ class _AddCustomerDialogState extends State<AddCustomerDialog> {
                                   ),
                                 )
                               : Text(
-                                  _skipVerification
-                                      ? 'Save'
-                                      : (_otpSent ? 'Verify' : 'Send OTP'),
+                                  _showVehicleNumberField
+                                      ? 'Save Vehicle'
+                                      : (_skipVerification
+                                          ? 'Save'
+                                          : (_otpSent ? 'Verify' : 'Send OTP')),
                                   style: const TextStyle(
                                     fontSize: 16.0,
                                     fontWeight: FontWeight.w500,
