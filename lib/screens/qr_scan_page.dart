@@ -621,77 +621,184 @@ class _QrScanPageState extends State<QrScanPage> {
               ),
               const SizedBox(height: 16),
               if (_isScanSuccess && _scannedValue != null && !_isCheckingCode)
-                Row(
-                  children: [
-                    if (!_hasCheckedIn) ...[
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _isUpdatingInfo
-                              ? null
-                              : () => _updateInfo(
-                                    qrCode: _scannedValue!,
-                                    checkedIn: true,
-                                    meal: false,
-                                    // If there is no entry for this QR yet, use add_info
-                                    isNewEntry: !_hasExistingInfoEntry,
-                                  ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xffd41818),
-                            foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          child: _isUpdatingInfo
-                              ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation(Colors.white),
-                                  ),
-                                )
-                              : const Text('Check In'),
-                        ),
-                      ),
-                    ] else if (_hasCheckedIn && !_hasMeal) ...[
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _isUpdatingInfo
-                              ? null
-                              : () => _updateInfo(
-                                    qrCode: _scannedValue!,
-                                    checkedIn: true,
-                                    meal: true,
-                                    // Meals always updates existing info
-                                    isNewEntry: false,
-                                  ),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xffd41818),
-                            foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          child: _isUpdatingInfo
-                              ? const SizedBox(
-                                  height: 18,
-                                  width: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor:
-                                        AlwaysStoppedAnimation(Colors.white),
-                                  ),
-                                )
-                              : const Text('Confirm Meals'),
-                        ),
-                      ),
-                    ],
-                  ],
+                Builder(
+                  builder: (context) {
+                    Widget? slider;
+
+                    // Case 1: No existing info entry and not yet checked in → interactive Check In slider.
+                    if (!_hasCheckedIn) {
+                      slider = _SlideToConfirm(
+                        label: 'Check In',
+                        isCompleted: false,
+                        isLoading: _isUpdatingInfo,
+                        onConfirm: _isUpdatingInfo
+                            ? null
+                            : () => _updateInfo(
+                                  qrCode: _scannedValue!,
+                                  checkedIn: true,
+                                  meal: false,
+                                  isNewEntry: !_hasExistingInfoEntry,
+                                ),
+                      );
+                    }
+                    // Case 2: Just completed Check In for a QR that had no prior entry.
+                    // Show Check In slider in completed state; do NOT show Confirm Meals yet.
+                    else if (_hasCheckedIn && !_hasMeal && !_hasExistingInfoEntry) {
+                      slider = const _SlideToConfirm(
+                        label: 'Check In',
+                        isCompleted: true,
+                        isLoading: false,
+                        onConfirm: null,
+                      );
+                    }
+                    // Case 3: QR already had a Check In entry, but meal not taken yet → interactive Confirm Meals.
+                    else if (_hasCheckedIn && !_hasMeal && _hasExistingInfoEntry) {
+                      slider = _SlideToConfirm(
+                        label: 'Confirm Meals',
+                        isCompleted: false,
+                        isLoading: _isUpdatingInfo,
+                        onConfirm: _isUpdatingInfo
+                            ? null
+                            : () => _updateInfo(
+                                  qrCode: _scannedValue!,
+                                  checkedIn: true,
+                                  meal: true,
+                                  isNewEntry: false,
+                                ),
+                      );
+                    }
+                    // Case 4: Both Check In and Meals completed → do not show any slider.
+
+                    if (slider == null) return const SizedBox.shrink();
+
+                    return Row(
+                      children: [
+                        Expanded(child: slider),
+                      ],
+                    );
+                  },
                 ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Slide-from-left-to-right control: user must complete the slide to trigger the action.
+class _SlideToConfirm extends StatefulWidget {
+  const _SlideToConfirm({
+    required this.label,
+    required this.onConfirm,
+    required this.isLoading,
+    required this.isCompleted,
+  });
+
+  final String label;
+  final VoidCallback? onConfirm;
+  final bool isLoading;
+  final bool isCompleted;
+
+  @override
+  State<_SlideToConfirm> createState() => _SlideToConfirmState();
+}
+
+class _SlideToConfirmState extends State<_SlideToConfirm> {
+  double _dragOffset = 0;
+
+  static const double _thumbSize = 48;
+  static const double _trackHeight = 52;
+  static const double _padding = 4;
+  static const Color _themeColor = Color(0xffd41818);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final trackWidth = constraints.maxWidth;
+        final maxDrag = trackWidth - _thumbSize - _padding * 2;
+        final triggerThreshold = maxDrag * 0.85;
+
+        final bool disabled =
+            widget.onConfirm == null || widget.isLoading || widget.isCompleted;
+
+        return Container(
+          height: _trackHeight,
+          decoration: BoxDecoration(
+            color: Colors.grey[300],
+            borderRadius: BorderRadius.circular(_trackHeight / 2),
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Center(
+                child: Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: disabled ? Colors.grey[600] : Colors.grey[800],
+                  ),
+                ),
+              ),
+              Positioned(
+                left: _padding +
+                    (widget.isCompleted ? maxDrag : _dragOffset.clamp(0.0, maxDrag)),
+                top: _padding,
+                child: GestureDetector(
+                  onHorizontalDragUpdate: (d) {
+                    if (disabled) return;
+                    setState(() {
+                      _dragOffset =
+                          (_dragOffset + d.delta.dx).clamp(0.0, maxDrag);
+                    });
+                  },
+                  onHorizontalDragEnd: (d) {
+                    if (disabled) return;
+                    if (_dragOffset >= triggerThreshold) {
+                      widget.onConfirm!();
+                      setState(() => _dragOffset = 0);
+                    } else {
+                      setState(() => _dragOffset = 0);
+                    }
+                  },
+                  child: Container(
+                    width: _thumbSize,
+                    height: _thumbSize,
+                    decoration: BoxDecoration(
+                      color: widget.onConfirm == null || widget.isLoading
+                          ? Colors.grey[500]
+                          : _themeColor,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: widget.isLoading
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation(Colors.white),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.arrow_forward,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
