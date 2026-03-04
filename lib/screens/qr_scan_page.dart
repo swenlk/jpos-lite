@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -23,6 +25,7 @@ class _QrScanPageState extends State<QrScanPage> {
   String? _checkedInTime;
   bool _isCheckingCode = false;
   bool _isUpdatingInfo = false;
+  bool _isScannerPaused = false;
   String? _lastRequestedCode;
   bool _hasCheckedIn = false;
   bool _hasMeal = false;
@@ -173,6 +176,16 @@ class _QrScanPageState extends State<QrScanPage> {
           _checkedInTime = checkedInTime;
           _currentInfoList = info is List ? List<dynamic>.from(info) : null;
         });
+
+        // Pause the camera preview after a successful scan.
+        if (!_isScannerPaused) {
+          await _controller.stop();
+          if (mounted) {
+            setState(() {
+              _isScannerPaused = true;
+            });
+          }
+        }
       } else {
         final errorMessage = data?['status_description'] ??
             'Failed to fetch customer for QR code';
@@ -328,15 +341,6 @@ class _QrScanPageState extends State<QrScanPage> {
           setState(() {
             _hasCheckedIn = checkedIn;
             _hasMeal = meal;
-            // Clear current scan state after a successful update
-            _scannedValue = null;
-            _customerName = null;
-            _customerId = null;
-            _lastRequestedCode = null;
-            _isScanSuccess = false;
-            _hasExistingInfoEntry = false;
-            _currentInfoList = null;
-            _checkedInTime = null;
           });
           SnackbarManager.showSuccess(
             context,
@@ -412,7 +416,7 @@ class _QrScanPageState extends State<QrScanPage> {
     }
     widgets.add(
       Text(
-        _scannedValue ?? '—',
+        _scannedValue ?? '',
         style: const TextStyle(
           fontSize: 16,
           fontWeight: FontWeight.w500,
@@ -433,6 +437,30 @@ class _QrScanPageState extends State<QrScanPage> {
       );
     }
     return widgets;
+  }
+
+  Future<void> _onRescan() async {
+    setState(() {
+      _scannedValue = null;
+      _customerName = null;
+      _customerId = null;
+      _checkedInTime = null;
+      _hasCheckedIn = false;
+      _hasMeal = false;
+      _isScanSuccess = false;
+      _hasExistingInfoEntry = false;
+      _currentInfoList = null;
+      _lastRequestedCode = null;
+    });
+
+    if (_isScannerPaused) {
+      await _controller.start();
+      if (mounted) {
+        setState(() {
+          _isScannerPaused = false;
+        });
+      }
+    }
   }
 
   @override
@@ -520,9 +548,49 @@ class _QrScanPageState extends State<QrScanPage> {
               aspectRatio: 3 / 4,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: MobileScanner(
-                  controller: _controller,
-                  onDetect: _onDetect,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    MobileScanner(
+                      controller: _controller,
+                      onDetect: _onDetect,
+                    ),
+                    if (_isScanSuccess)
+                      Positioned.fill(
+                        child: ClipRect(
+                          child: BackdropFilter(
+                            filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                            child: Container(
+                              color: Colors.black.withOpacity(0.4),
+                              child: Center(
+                                child: FilledButton.icon(
+                                  onPressed: _onRescan,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xffd41818),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 24,
+                                      vertical: 12,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text(
+                                    'Rescan',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -531,7 +599,7 @@ class _QrScanPageState extends State<QrScanPage> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16.0),
-          color: Colors.grey[100],
+          // color: Colors.grey[100],
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
