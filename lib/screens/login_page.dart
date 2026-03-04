@@ -326,6 +326,13 @@ class _LoginPageState extends State<LoginPage> {
           await prefs.setBool('quickInvoice', false);
         }
 
+        // Store ticketingEnabled value from configurations
+        if (configurations != null && configurations['ticketingEnabled'] != null) {
+          await prefs.setBool('ticketingEnabled', configurations['ticketingEnabled'] == true);
+        } else {
+          await prefs.setBool('ticketingEnabled', false);
+        }
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomePage()),

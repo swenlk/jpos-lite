@@ -11,6 +11,7 @@ import 'package:lite/screens/login_page.dart';
 import 'package:lite/screens/overview_page.dart';
 import 'package:lite/screens/transaction_page.dart';
 import 'package:lite/screens/pending_transaction_page.dart';
+import 'package:lite/screens/qr_scan_page.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/print_service.dart';
 import 'package:lite/utils/snackbar_manager.dart';
@@ -50,6 +51,7 @@ class _HomePageState extends State<HomePage> {
 
   bool _tileLayout = false;
   bool _quickInvoice = false;
+  bool _ticketingEnabled = false;
 
   List<Customer> _customers = [];
   Customer? _selectedCustomer;
@@ -139,6 +141,7 @@ class _HomePageState extends State<HomePage> {
         _fingerprintDeviceIp = prefs.getString('fingerprintDeviceIp');
         _tileLayout = prefs.getBool('tileLayout') ?? false;
         _quickInvoice = prefs.getBool('quickInvoice') ?? false;
+        _ticketingEnabled = prefs.getBool('ticketingEnabled')??false;
       });
       // print(storedToken);
     } else {
@@ -1958,6 +1961,20 @@ class _HomePageState extends State<HomePage> {
         foregroundColor: Colors.white,
         title: Text(businessName ?? 'Business Name'),
         actions: [
+          if (_ticketingEnabled) ...[
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const QrScanPage(),
+                ),
+              );
+            },
+            tooltip: 'Scan QR',
+          ),
+          ],
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _syncData,
