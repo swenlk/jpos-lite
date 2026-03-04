@@ -20,12 +20,15 @@ class _QrScanPageState extends State<QrScanPage> {
   String? _scannedValue;
   String? _customerName;
   String? _customerId;
+  String? _checkedInTime;
   bool _isCheckingCode = false;
   bool _isUpdatingInfo = false;
   String? _lastRequestedCode;
   bool _hasCheckedIn = false;
   bool _hasMeal = false;
   bool _isScanSuccess = false;
+  bool _hasExistingInfoEntry = false;
+  List<dynamic>? _currentInfoList;
   final MobileScannerController _controller = MobileScannerController(
     detectionSpeed: DetectionSpeed.normal,
     facing: CameraFacing.back,
@@ -94,9 +97,12 @@ class _QrScanPageState extends State<QrScanPage> {
       _lastRequestedCode = qrCode;
       _customerName = null;
       _customerId = null;
+      _checkedInTime = null;
       _hasCheckedIn = false;
       _hasMeal = false;
       _isScanSuccess = false;
+      _hasExistingInfoEntry = false;
+      _currentInfoList = null;
     });
 
     try {
@@ -135,6 +141,8 @@ class _QrScanPageState extends State<QrScanPage> {
         final info = customer['info'];
         bool checkedIn = false;
         bool meal = false;
+        bool hasExistingEntry = false;
+        String? checkedInTime;
 
         if (info is List) {
           for (final entry in info) {
@@ -143,6 +151,11 @@ class _QrScanPageState extends State<QrScanPage> {
               if (qrObject is Map) {
                 checkedIn = qrObject['checkedIn'] == true;
                 meal = qrObject['meal'] == true;
+                hasExistingEntry = true;
+                final dynamic timeVal = qrObject['checkedInTime'];
+                if (timeVal != null) {
+                  checkedInTime = timeVal.toString();
+                }
               }
               break;
             }
@@ -156,6 +169,9 @@ class _QrScanPageState extends State<QrScanPage> {
           _hasCheckedIn = checkedIn;
           _hasMeal = meal;
           _isScanSuccess = true;
+          _hasExistingInfoEntry = hasExistingEntry;
+          _checkedInTime = checkedInTime;
+          _currentInfoList = info is List ? List<dynamic>.from(info) : null;
         });
       } else {
         final errorMessage = data?['status_description'] ??
@@ -172,7 +188,11 @@ class _QrScanPageState extends State<QrScanPage> {
           e.type == DioExceptionType.receiveTimeout) {
         message = 'Connection timeout. Please try again.';
       } else {
-        message = 'Network error: ${e.message}';
+        final detail = e.message ?? e.error?.toString() ?? '';
+        print('Network error: $detail');
+        message = detail.isNotEmpty
+            ? 'Network error: $detail'
+            : 'Network error. Please check your connection.';
       }
       if (mounted) {
         SnackbarManager.showError(context, message: message);
@@ -197,6 +217,7 @@ class _QrScanPageState extends State<QrScanPage> {
     required String qrCode,
     required bool checkedIn,
     required bool meal,
+    required bool isNewEntry,
   }) async {
     final activeToken = await _getActiveToken();
     if (activeToken == null || activeToken.isEmpty || _customerId == null) {
@@ -216,22 +237,77 @@ class _QrScanPageState extends State<QrScanPage> {
       dio.options.connectTimeout = const Duration(seconds: 30);
       dio.options.receiveTimeout = const Duration(seconds: 30);
 
-      final value = {
-        qrCode: {
-          'checkedIn': checkedIn,
-          'meal': meal,
-        },
+      // Base QR object for this code.
+      // For new entries (add_info), also include the checked-in time,
+      // using Asia/Colombo time (UTC+5:30) and serialize as ISO8601.
+      DateTime? checkedInTime;
+      if (isNewEntry) {
+        final nowUtc = DateTime.now().toUtc();
+        checkedInTime = nowUtc.add(const Duration(hours: 5, minutes: 30));
+        // checkedInTime = DateTime.now();
+      }
+
+      final baseQrObject = <String, dynamic>{
+        'checkedIn': checkedIn,
+        'meal': meal,
+        if (checkedInTime != null)
+          'checkedInTime': checkedInTime.toIso8601String(),
       };
 
-      final requestBody = {
-        'activeToken': activeToken,
-        'customerId': _customerId,
-        // Send QR info as an array to match the `info` structure.
-        'value': [value],
-      };
+      Map<String, dynamic> singleValue = {};
+      List<dynamic> valueList = [];
+
+      if (isNewEntry) {
+        // For add_info, send only the new QR object
+        singleValue = {
+          qrCode: baseQrObject,
+        };
+      } else {
+        // For update_info, update only this QR entry inside the full info[] array
+        final List<dynamic> sourceList =
+            _currentInfoList is List ? List<dynamic>.from(_currentInfoList!) : [];
+
+        bool updated = false;
+        valueList = sourceList.map((entry) {
+          if (entry is Map && entry.containsKey(qrCode)) {
+            final existingObj = entry[qrCode];
+            final Map<String, dynamic> updatedObj =
+                existingObj is Map<String, dynamic>
+                    ? Map<String, dynamic>.from(existingObj)
+                    : <String, dynamic>{};
+            updatedObj['checkedIn'] = checkedIn;
+            updatedObj['meal'] = meal;
+            updated = true;
+            return {qrCode: updatedObj};
+          }
+          return entry;
+        }).toList();
+
+        // If for some reason no entry existed, append a new one
+        if (!updated) {
+          valueList.add({
+            qrCode: baseQrObject,
+          });
+        }
+      }
+
+      final requestBody = isNewEntry
+          ? {
+              'activeToken': activeToken,
+              'customerId': _customerId,
+              'value': singleValue,
+            }
+          : {
+              'activeToken': activeToken,
+              'customerId': _customerId,
+              'value': valueList,
+            };
+
+      final String endpoint =
+          isNewEntry ? ApiEndpoints.addInfo : ApiEndpoints.updateInfo;
 
       final response = await dio.post(
-        AppConfigs.baseUrl + ApiEndpoints.updateInfo,
+        AppConfigs.baseUrl + endpoint,
         data: requestBody,
         options: Options(
           headers: {
@@ -258,6 +334,9 @@ class _QrScanPageState extends State<QrScanPage> {
             _customerId = null;
             _lastRequestedCode = null;
             _isScanSuccess = false;
+            _hasExistingInfoEntry = false;
+            _currentInfoList = null;
+            _checkedInTime = null;
           });
           SnackbarManager.showSuccess(
             context,
@@ -279,7 +358,11 @@ class _QrScanPageState extends State<QrScanPage> {
           e.type == DioExceptionType.receiveTimeout) {
         message = 'Connection timeout. Please try again.';
       } else {
-        message = 'Network error: ${e.message}';
+        final detail = e.message ?? e.error?.toString() ?? '';
+        print('Network error: $detail');
+        message = detail.isNotEmpty
+            ? 'Network error: $detail'
+            : 'Network error. Please check your connection.';
       }
       if (mounted) {
         SnackbarManager.showError(context, message: message);
@@ -297,6 +380,19 @@ class _QrScanPageState extends State<QrScanPage> {
           _isUpdatingInfo = false;
         });
       }
+    }
+  }
+
+  /// Formats a date-time string for display as yyyy:MM:dd hh:mm a (AM/PM).
+  String _formatCheckedInTime(String raw) {
+    try {
+      final dt = DateTime.parse(raw);
+      final hour12 = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+      final amPm = dt.hour < 12 ? 'AM' : 'PM';
+      return '${dt.year}:${dt.month.toString().padLeft(2, '0')}:${dt.day.toString().padLeft(2, '0')} '
+          '${hour12.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} $amPm';
+    } catch (_) {
+      return raw;
     }
   }
 
@@ -323,6 +419,19 @@ class _QrScanPageState extends State<QrScanPage> {
         ),
       ),
     );
+    if (_hasCheckedIn && _checkedInTime != null) {
+      widgets.add(const SizedBox(height: 4));
+      widgets.add(
+        Text(
+          'Checked In: ${_formatCheckedInTime(_checkedInTime!)}',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            // color: Colors.green,
+          ),
+        ),
+      );
+    }
     return widgets;
   }
 
@@ -343,7 +452,18 @@ class _QrScanPageState extends State<QrScanPage> {
             ? const Center(child: CircularProgressIndicator())
             : !_permissionGranted
                 ? _buildPermissionDenied()
-                : _buildScanner(),
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: constraints.maxHeight,
+                          ),
+                          child: _buildScanner(),
+                        ),
+                      );
+                    },
+                  ),
       ),
     );
   }
@@ -388,113 +508,119 @@ class _QrScanPageState extends State<QrScanPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          flex: 3,
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: MobileScanner(
-                controller: _controller,
-                onDetect: _onDetect,
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              // Prevent the camera preview from growing too tall,
+              // especially in landscape orientation.
+              maxHeight: 400,
+            ),
+            child: AspectRatio(
+              aspectRatio: 3 / 4,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: MobileScanner(
+                  controller: _controller,
+                  onDetect: _onDetect,
+                ),
               ),
             ),
           ),
         ),
-        Expanded(
-          flex: 1,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16.0),
-            color: Colors.grey[100],
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Scanned value',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[700],
-                  ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16.0),
+          color: Colors.grey[100],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Text(
+              //   'Customer Details',
+              //   style: TextStyle(
+              //     fontSize: 14,
+              //     fontWeight: FontWeight.w600,
+              //     color: Colors.grey[700],
+              //   ),
+              // ),
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: _buildScannedContent(),
                 ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: _buildScannedContent(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (_isScanSuccess && _scannedValue != null && !_isCheckingCode)
-                  Row(
-                    children: [
-                      if (!_hasCheckedIn) ...[
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _isUpdatingInfo
-                                ? null
-                                : () => _updateInfo(
-                                      qrCode: _scannedValue!,
-                                      checkedIn: true,
-                                      meal: false,
-                                    ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xffd41818),
-                              foregroundColor: Colors.white,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            child: _isUpdatingInfo
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor:
-                                          AlwaysStoppedAnimation(Colors.white),
-                                    ),
-                                  )
-                                : const Text('Check In'),
+              ),
+              const SizedBox(height: 16),
+              if (_isScanSuccess && _scannedValue != null && !_isCheckingCode)
+                Row(
+                  children: [
+                    if (!_hasCheckedIn) ...[
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _isUpdatingInfo
+                              ? null
+                              : () => _updateInfo(
+                                    qrCode: _scannedValue!,
+                                    checkedIn: true,
+                                    meal: false,
+                                    // If there is no entry for this QR yet, use add_info
+                                    isNewEntry: !_hasExistingInfoEntry,
+                                  ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xffd41818),
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 12),
                           ),
+                          child: _isUpdatingInfo
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Text('Check In'),
                         ),
-                      ] else if (_hasCheckedIn && !_hasMeal) ...[
-                        Expanded(
-                          child: FilledButton(
-                            onPressed: _isUpdatingInfo
-                                ? null
-                                : () => _updateInfo(
-                                      qrCode: _scannedValue!,
-                                      checkedIn: true,
-                                      meal: true,
-                                    ),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xffd41818),
-                              foregroundColor: Colors.white,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            child: _isUpdatingInfo
-                                ? const SizedBox(
-                                    height: 18,
-                                    width: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor:
-                                          AlwaysStoppedAnimation(Colors.white),
-                                    ),
-                                  )
-                                : const Text('Meals'),
+                      ),
+                    ] else if (_hasCheckedIn && !_hasMeal) ...[
+                      Expanded(
+                        child: FilledButton(
+                          onPressed: _isUpdatingInfo
+                              ? null
+                              : () => _updateInfo(
+                                    qrCode: _scannedValue!,
+                                    checkedIn: true,
+                                    meal: true,
+                                    // Meals always updates existing info
+                                    isNewEntry: false,
+                                  ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xffd41818),
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 12),
                           ),
+                          child: _isUpdatingInfo
+                              ? const SizedBox(
+                                  height: 18,
+                                  width: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Text('Confirm Meals'),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
-              ],
-            ),
+                  ],
+                ),
+            ],
           ),
         ),
       ],
