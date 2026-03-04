@@ -1,5 +1,4 @@
 class ApiEndpoints {
-
   static String authenticate = '/authenticate';
   static String createCustomer = '/create_customer';
   static String verifyCustomer = '/verify_customer';
@@ -11,4 +10,7 @@ class ApiEndpoints {
   static String completePartialTransaction = '/complete_partial_transaction';
   static String resendOtp = '/resend_otp';
 
+  // QR scan & customer info
+  static String qrScan = '/qr_scan';
+  static String updateInfo = '/update_info';
 }
