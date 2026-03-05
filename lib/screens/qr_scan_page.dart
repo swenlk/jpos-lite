@@ -24,12 +24,14 @@ class _QrScanPageState extends State<QrScanPage> {
   String? _customerId;
   String? _checkedInTime;
   String? _mealConfirmedTime;
+  String? _snackDispatchedTime;
   bool _isCheckingCode = false;
   bool _isUpdatingInfo = false;
   bool _isScannerPaused = false;
   String? _lastRequestedCode;
   bool _hasCheckedIn = false;
   bool _hasMeal = false;
+  bool _hasSnack = false;
   bool _isScanSuccess = false;
   bool _hasExistingInfoEntry = false;
   List<dynamic>? _currentInfoList;
@@ -103,8 +105,10 @@ class _QrScanPageState extends State<QrScanPage> {
       _customerId = null;
       _checkedInTime = null;
       _mealConfirmedTime = null;
+      _snackDispatchedTime = null;
       _hasCheckedIn = false;
       _hasMeal = false;
+      _hasSnack = false;
       _isScanSuccess = false;
       _hasExistingInfoEntry = false;
       _currentInfoList = null;
@@ -146,9 +150,11 @@ class _QrScanPageState extends State<QrScanPage> {
         final info = customer['info'];
         bool checkedIn = false;
         bool meal = false;
+        bool snack = false;
         bool hasExistingEntry = false;
         String? checkedInTime;
         String? mealConfirmedTime;
+        String? snackDispatchedTime;
 
         if (info is List) {
           for (final entry in info) {
@@ -157,6 +163,7 @@ class _QrScanPageState extends State<QrScanPage> {
               if (qrObject is Map) {
                 checkedIn = qrObject['checkedIn'] == true;
                 meal = qrObject['meal'] == true;
+                snack = qrObject['snack'] == true;
                 hasExistingEntry = true;
                 final dynamic timeVal = qrObject['checkedInTime'];
                 if (timeVal != null) {
@@ -165,6 +172,10 @@ class _QrScanPageState extends State<QrScanPage> {
                 final dynamic mealTimeVal = qrObject['mealConfirmedTime'];
                 if (mealTimeVal != null) {
                   mealConfirmedTime = mealTimeVal.toString();
+                }
+                final dynamic snackTimeVal = qrObject['snackDispatchedTime'];
+                if (snackTimeVal != null) {
+                  snackDispatchedTime = snackTimeVal.toString();
                 }
               }
               break;
@@ -178,10 +189,12 @@ class _QrScanPageState extends State<QrScanPage> {
           _customerId = customer['_id'] as String?;
           _hasCheckedIn = checkedIn;
           _hasMeal = meal;
+          _hasSnack = snack;
           _isScanSuccess = true;
           _hasExistingInfoEntry = hasExistingEntry;
           _checkedInTime = checkedInTime;
           _mealConfirmedTime = mealConfirmedTime;
+          _snackDispatchedTime = snackDispatchedTime;
           _currentInfoList = info is List ? List<dynamic>.from(info) : null;
         });
 
@@ -238,6 +251,7 @@ class _QrScanPageState extends State<QrScanPage> {
     required String qrCode,
     required bool checkedIn,
     required bool meal,
+    required bool snack,
     required bool isNewEntry,
   }) async {
     final activeToken = await _getActiveToken();
@@ -263,6 +277,7 @@ class _QrScanPageState extends State<QrScanPage> {
       // using Asia/Colombo time (UTC+5:30) and serialize as ISO8601.
       DateTime? checkedInTime;
       DateTime? mealConfirmedTime;
+      DateTime? snackDispatchedTime;
       if (isNewEntry) {
         final nowUtc = DateTime.now().toUtc();
         checkedInTime = nowUtc.add(const Duration(hours: 5, minutes: 30));
@@ -272,6 +287,7 @@ class _QrScanPageState extends State<QrScanPage> {
       final baseQrObject = <String, dynamic>{
         'checkedIn': checkedIn,
         'meal': meal,
+        'snack': snack,
         if (checkedInTime != null)
           'checkedInTime': checkedInTime.toIso8601String(),
       };
@@ -295,6 +311,13 @@ class _QrScanPageState extends State<QrScanPage> {
           mealConfirmedTime = nowUtc.add(const Duration(hours: 5, minutes: 30));
         }
 
+        // When confirming snack, set snackDispatchedTime (Asia/Colombo).
+        if (snack) {
+          final nowUtc = DateTime.now().toUtc();
+          snackDispatchedTime =
+              nowUtc.add(const Duration(hours: 5, minutes: 30));
+        }
+
         bool updated = false;
         valueList = sourceList.map((entry) {
           if (entry is Map && entry.containsKey(qrCode)) {
@@ -305,9 +328,14 @@ class _QrScanPageState extends State<QrScanPage> {
                     : <String, dynamic>{};
             updatedObj['checkedIn'] = checkedIn;
             updatedObj['meal'] = meal;
+            updatedObj['snack'] = snack;
             if (mealConfirmedTime != null) {
               updatedObj['mealConfirmedTime'] =
                   mealConfirmedTime.toIso8601String();
+            }
+            if (snackDispatchedTime != null) {
+              updatedObj['snackDispatchedTime'] =
+                  snackDispatchedTime.toIso8601String();
             }
             updated = true;
             return {qrCode: updatedObj};
@@ -362,6 +390,10 @@ class _QrScanPageState extends State<QrScanPage> {
             _hasMeal = meal;
             if (meal && mealConfirmedTime != null) {
               _mealConfirmedTime = mealConfirmedTime.toIso8601String();
+            }
+            _hasSnack = snack;
+            if (snack && snackDispatchedTime != null) {
+              _snackDispatchedTime = snackDispatchedTime.toIso8601String();
             }
           });
           SnackbarManager.showSuccess(
@@ -481,6 +513,24 @@ class _QrScanPageState extends State<QrScanPage> {
         ),
       );
     }
+    if (_snackDispatchedTime != null) {
+      widgets.add(const SizedBox(height: 4));
+      widgets.add(
+        Row(
+          children: [
+            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 6),
+            Text(
+              'Snack Dispatched: ${_formatCheckedInTime(_snackDispatchedTime!)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return widgets;
   }
 
@@ -491,8 +541,10 @@ class _QrScanPageState extends State<QrScanPage> {
       _customerId = null;
       _checkedInTime = null;
       _mealConfirmedTime = null;
+      _snackDispatchedTime = null;
       _hasCheckedIn = false;
       _hasMeal = false;
+      _hasSnack = false;
       _isScanSuccess = false;
       _hasExistingInfoEntry = false;
       _currentInfoList = null;
@@ -669,58 +721,94 @@ class _QrScanPageState extends State<QrScanPage> {
               if (_isScanSuccess && _scannedValue != null && !_isCheckingCode)
                 Builder(
                   builder: (context) {
-                    Widget? slider;
+                    final List<Widget> sliders = [];
 
                     // Case 1: No existing info entry and not yet checked in → interactive Check In slider.
                     if (!_hasCheckedIn) {
-                      slider = _SlideToConfirm(
-                        label: 'Check In',
-                        isCompleted: false,
-                        isLoading: _isUpdatingInfo,
-                        onConfirm: _isUpdatingInfo
-                            ? null
-                            : () => _updateInfo(
-                                  qrCode: _scannedValue!,
-                                  checkedIn: true,
-                                  meal: false,
-                                  isNewEntry: !_hasExistingInfoEntry,
-                                ),
+                      sliders.add(
+                        _SlideToConfirm(
+                          label: 'Check In',
+                          isCompleted: false,
+                          isLoading: _isUpdatingInfo,
+                          onConfirm: _isUpdatingInfo
+                              ? null
+                              : () => _updateInfo(
+                                    qrCode: _scannedValue!,
+                                    checkedIn: true,
+                                    meal: false,
+                                    snack: false,
+                                    isNewEntry: !_hasExistingInfoEntry,
+                                  ),
+                        ),
                       );
                     }
                     // Case 2: Just completed Check In for a QR that had no prior entry.
-                    // Show Check In slider in completed state; do NOT show Confirm Meals yet.
-                    else if (_hasCheckedIn && !_hasMeal && !_hasExistingInfoEntry) {
-                      slider = const _SlideToConfirm(
-                        label: 'Check In',
-                        isCompleted: true,
-                        isLoading: false,
-                        onConfirm: null,
+                    // Show Check In slider in completed state; do NOT show Confirm Meals/Snack yet.
+                    else if (_hasCheckedIn && !_hasMeal && !_hasSnack && !_hasExistingInfoEntry) {
+                      sliders.add(
+                        const _SlideToConfirm(
+                          label: 'Check In',
+                          isCompleted: true,
+                          isLoading: false,
+                          onConfirm: null,
+                        ),
                       );
                     }
-                    // Case 3: QR already had a Check In entry, but meal not taken yet → interactive Confirm Meals.
-                    else if (_hasCheckedIn && !_hasMeal && _hasExistingInfoEntry) {
-                      slider = _SlideToConfirm(
-                        label: 'Confirm Meals',
-                        isCompleted: false,
-                        isLoading: _isUpdatingInfo,
-                        onConfirm: _isUpdatingInfo
-                            ? null
-                            : () => _updateInfo(
-                                  qrCode: _scannedValue!,
-                                  checkedIn: true,
-                                  meal: true,
-                                  isNewEntry: false,
-                                ),
-                      );
+                    // Case 3: QR already had a Check In entry → allow confirming Meals and Snack independently.
+                    else if (_hasCheckedIn && _hasExistingInfoEntry) {
+                      if (!_hasSnack) {
+                        sliders.add(
+                          _SlideToConfirm(
+                            label: 'Confirm Snack',
+                            isCompleted: false,
+                            isLoading: _isUpdatingInfo,
+                            onConfirm: _isUpdatingInfo
+                                ? null
+                                : () => _updateInfo(
+                              qrCode: _scannedValue!,
+                              checkedIn: true,
+                              meal: _hasMeal,
+                              snack: true,
+                              isNewEntry: false,
+                            ),
+                          ),
+                        );
+                      }
+                      if (!_hasMeal) {
+                        sliders.add(
+                          _SlideToConfirm(
+                            label: 'Confirm Meal',
+                            isCompleted: false,
+                            isLoading: _isUpdatingInfo,
+                            onConfirm: _isUpdatingInfo
+                                ? null
+                                : () => _updateInfo(
+                                      qrCode: _scannedValue!,
+                                      checkedIn: true,
+                                      meal: true,
+                                      snack: _hasSnack,
+                                      isNewEntry: false,
+                                    ),
+                          ),
+                        );
+                      }
                     }
-                    // Case 4: Both Check In and Meals completed → do not show any slider.
+                    // If nothing to show, return empty.
+                    if (sliders.isEmpty) return const SizedBox.shrink();
 
-                    if (slider == null) return const SizedBox.shrink();
-
-                    return Row(
-                      children: [
-                        Expanded(child: slider),
-                      ],
+                    return Column(
+                      children: sliders
+                          .map(
+                            (s) => Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: Row(
+                                children: [
+                                  Expanded(child: s),
+                                ],
+                              ),
+                            ),
+                          )
+                          .toList(),
                     );
                   },
                 ),
