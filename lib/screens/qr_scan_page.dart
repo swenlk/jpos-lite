@@ -23,6 +23,7 @@ class _QrScanPageState extends State<QrScanPage> {
   String? _customerName;
   String? _customerId;
   String? _checkedInTime;
+  String? _mealConfirmedTime;
   bool _isCheckingCode = false;
   bool _isUpdatingInfo = false;
   bool _isScannerPaused = false;
@@ -101,6 +102,7 @@ class _QrScanPageState extends State<QrScanPage> {
       _customerName = null;
       _customerId = null;
       _checkedInTime = null;
+      _mealConfirmedTime = null;
       _hasCheckedIn = false;
       _hasMeal = false;
       _isScanSuccess = false;
@@ -146,6 +148,7 @@ class _QrScanPageState extends State<QrScanPage> {
         bool meal = false;
         bool hasExistingEntry = false;
         String? checkedInTime;
+        String? mealConfirmedTime;
 
         if (info is List) {
           for (final entry in info) {
@@ -158,6 +161,10 @@ class _QrScanPageState extends State<QrScanPage> {
                 final dynamic timeVal = qrObject['checkedInTime'];
                 if (timeVal != null) {
                   checkedInTime = timeVal.toString();
+                }
+                final dynamic mealTimeVal = qrObject['mealConfirmedTime'];
+                if (mealTimeVal != null) {
+                  mealConfirmedTime = mealTimeVal.toString();
                 }
               }
               break;
@@ -174,6 +181,7 @@ class _QrScanPageState extends State<QrScanPage> {
           _isScanSuccess = true;
           _hasExistingInfoEntry = hasExistingEntry;
           _checkedInTime = checkedInTime;
+          _mealConfirmedTime = mealConfirmedTime;
           _currentInfoList = info is List ? List<dynamic>.from(info) : null;
         });
 
@@ -254,6 +262,7 @@ class _QrScanPageState extends State<QrScanPage> {
       // For new entries (add_info), also include the checked-in time,
       // using Asia/Colombo time (UTC+5:30) and serialize as ISO8601.
       DateTime? checkedInTime;
+      DateTime? mealConfirmedTime;
       if (isNewEntry) {
         final nowUtc = DateTime.now().toUtc();
         checkedInTime = nowUtc.add(const Duration(hours: 5, minutes: 30));
@@ -280,6 +289,12 @@ class _QrScanPageState extends State<QrScanPage> {
         final List<dynamic> sourceList =
             _currentInfoList is List ? List<dynamic>.from(_currentInfoList!) : [];
 
+        // When confirming meal, set mealConfirmedTime (Asia/Colombo) like checkedInTime.
+        if (meal) {
+          final nowUtc = DateTime.now().toUtc();
+          mealConfirmedTime = nowUtc.add(const Duration(hours: 5, minutes: 30));
+        }
+
         bool updated = false;
         valueList = sourceList.map((entry) {
           if (entry is Map && entry.containsKey(qrCode)) {
@@ -290,6 +305,10 @@ class _QrScanPageState extends State<QrScanPage> {
                     : <String, dynamic>{};
             updatedObj['checkedIn'] = checkedIn;
             updatedObj['meal'] = meal;
+            if (mealConfirmedTime != null) {
+              updatedObj['mealConfirmedTime'] =
+                  mealConfirmedTime.toIso8601String();
+            }
             updated = true;
             return {qrCode: updatedObj};
           }
@@ -341,6 +360,9 @@ class _QrScanPageState extends State<QrScanPage> {
           setState(() {
             _hasCheckedIn = checkedIn;
             _hasMeal = meal;
+            if (meal && mealConfirmedTime != null) {
+              _mealConfirmedTime = mealConfirmedTime.toIso8601String();
+            }
           });
           SnackbarManager.showSuccess(
             context,
@@ -426,13 +448,36 @@ class _QrScanPageState extends State<QrScanPage> {
     if (_hasCheckedIn && _checkedInTime != null) {
       widgets.add(const SizedBox(height: 4));
       widgets.add(
-        Text(
-          'Checked In: ${_formatCheckedInTime(_checkedInTime!)}',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            // color: Colors.green,
-          ),
+        Row(
+          children: [
+            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 6),
+            Text(
+              'Checked In: ${_formatCheckedInTime(_checkedInTime!)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_mealConfirmedTime != null) {
+      widgets.add(const SizedBox(height: 4));
+      widgets.add(
+        Row(
+          children: [
+            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 6),
+            Text(
+              'Meal Dispatched: ${_formatCheckedInTime(_mealConfirmedTime!)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -445,6 +490,7 @@ class _QrScanPageState extends State<QrScanPage> {
       _customerName = null;
       _customerId = null;
       _checkedInTime = null;
+      _mealConfirmedTime = null;
       _hasCheckedIn = false;
       _hasMeal = false;
       _isScanSuccess = false;
