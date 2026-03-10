@@ -495,24 +495,6 @@ class _QrScanPageState extends State<QrScanPage> {
         ),
       );
     }
-    if (_mealConfirmedTime != null) {
-      widgets.add(const SizedBox(height: 4));
-      widgets.add(
-        Row(
-          children: [
-            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
-            const SizedBox(width: 6),
-            Text(
-              'Meal Dispatched: ${_formatCheckedInTime(_mealConfirmedTime!)}',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
     if (_snackDispatchedTime != null) {
       widgets.add(const SizedBox(height: 4));
       widgets.add(
@@ -522,6 +504,24 @@ class _QrScanPageState extends State<QrScanPage> {
             const SizedBox(width: 6),
             Text(
               'Snack Dispatched: ${_formatCheckedInTime(_snackDispatchedTime!)}',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_mealConfirmedTime != null) {
+      widgets.add(const SizedBox(height: 4));
+      widgets.add(
+        Row(
+          children: [
+            Icon(Icons.check_circle, size: 18, color: Colors.green[700]),
+            const SizedBox(width: 6),
+            Text(
+              'Meal Dispatched: ${_formatCheckedInTime(_mealConfirmedTime!)}',
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
