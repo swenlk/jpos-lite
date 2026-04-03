@@ -621,7 +621,7 @@ class _HomePageState extends State<HomePage> {
         });
       }
     }
-    SnackbarManager.showSuccess(context, message: 'Item added to cart');
+    // SnackbarManager.showSuccess(context, message: 'Item added to cart');
   }
 
   void _addToCart() {
@@ -775,6 +775,26 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
+  Widget _qtyStepButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    required Color color,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 150),
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Icon(icon, color: color, size: 20),
+      ),
+    );
+  }
+
   void _showClearConfirmationDialog() {
     ClearConfirmationDialog.show(context: context, onClear: _performClear);
   }
@@ -792,7 +812,7 @@ class _HomePageState extends State<HomePage> {
       _discountAmountController.text = '0';
       _currentTransactionId = null;
     });
-    SnackbarManager.showSuccess(context, message: 'All fields cleared');
+    // SnackbarManager.showSuccess(context, message: 'All fields cleared');
   }
 
   double get _cartItemsTotal {
@@ -2856,7 +2876,302 @@ class _HomePageState extends State<HomePage> {
                               ...(_cartItems.asMap().entries.map((entry) {
                                 final index = entry.key;
                                 final cartItem = entry.value;
-                                return Container(
+                                return GestureDetector(
+                                  onLongPress: () {
+                                    int tempQty = cartItem.quantity;
+                                    final TextEditingController _qtyController =
+                                        TextEditingController(
+                                      text: '${cartItem.quantity}',
+                                    );
+                                    showDialog(
+                                      context: context,
+                                      barrierColor: Colors.black54,
+                                      builder: (ctx) => StatefulBuilder(
+                                        builder: (ctx, setStateDialog) =>
+                                            Dialog(
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                          ),
+                                          elevation: 0,
+                                          backgroundColor: Colors.transparent,
+                                          child: Container(
+                                            padding: EdgeInsets.all(24),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius:
+                                                  BorderRadius.circular(20),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withOpacity(0.12),
+                                                  blurRadius: 24,
+                                                  offset: Offset(0, 8),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Container(
+                                                      padding:
+                                                          EdgeInsets.all(8),
+                                                      decoration: BoxDecoration(
+                                                        color: Color(0xffd41818)
+                                                            .withOpacity(0.1),
+                                                        borderRadius:
+                                                            BorderRadius
+                                                                .circular(10),
+                                                      ),
+                                                      child: Icon(
+                                                        Icons.edit_outlined,
+                                                        color: Color(0xffd41818),
+                                                        size: 20,
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 12),
+                                                    Expanded(
+                                                      child: Column(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .start,
+                                                        children: [
+                                                          Text(
+                                                            'Update Quantity',
+                                                            style: TextStyle(
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w700,
+                                                              color: Colors
+                                                                  .grey[900],
+                                                            ),
+                                                          ),
+                                                          SizedBox(height: 2),
+                                                          Text(
+                                                            cartItem
+                                                                .itemDisplayName,
+                                                            style: TextStyle(
+                                                              fontSize: 12,
+                                                              color: Colors
+                                                                  .grey[500],
+                                                            ),
+                                                            maxLines: 1,
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                                SizedBox(height: 24),
+                                                // Stepper row
+                                                Container(
+                                                  padding: EdgeInsets.symmetric(
+                                                      vertical: 6,
+                                                      horizontal: 8),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey[50],
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                            14),
+                                                    border: Border.all(
+                                                        color:
+                                                            Colors.grey[200]!),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment
+                                                            .spaceBetween,
+                                                    children: [
+                                                      _qtyStepButton(
+                                                        icon: Icons.remove,
+                                                        onTap: () {
+                                                          if (tempQty > 1) {
+                                                            setStateDialog(() {
+                                                              tempQty--;
+                                                              _qtyController
+                                                                  .text =
+                                                                  '$tempQty';
+                                                            });
+                                                          }
+                                                        },
+                                                        color: tempQty > 1
+                                                            ? Color(0xffd41818)
+                                                            : Colors.grey[300]!,
+                                                      ),
+                                                      SizedBox(
+                                                        width: 72,
+                                                        child: TextField(
+                                                          controller:
+                                                              _qtyController,
+                                                          keyboardType:
+                                                              TextInputType
+                                                                  .number,
+                                                          textAlign:
+                                                              TextAlign.center,
+                                                          style: TextStyle(
+                                                            fontSize: 22,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: Colors
+                                                                .grey[900],
+                                                          ),
+                                                          decoration:
+                                                              InputDecoration(
+                                                            border: InputBorder
+                                                                .none,
+                                                            contentPadding:
+                                                                EdgeInsets.zero,
+                                                          ),
+                                                          onChanged: (v) {
+                                                            final parsed =
+                                                                int.tryParse(v);
+                                                            if (parsed !=
+                                                                null) {
+                                                              setStateDialog(
+                                                                  () => tempQty =
+                                                                      parsed);
+                                                            }
+                                                          },
+                                                          onSubmitted: (v) {
+                                                            final qty =
+                                                                int.tryParse(v);
+                                                            if (qty != null) {
+                                                              _updateQuantity(
+                                                                  index, qty);
+                                                            }
+                                                            Navigator.of(ctx)
+                                                                .pop();
+                                                          },
+                                                        ),
+                                                      ),
+                                                      _qtyStepButton(
+                                                        icon: Icons.add,
+                                                        onTap: () {
+                                                          if (tempQty <
+                                                              cartItem
+                                                                  .maxQuantity) {
+                                                            setStateDialog(() {
+                                                              tempQty++;
+                                                              _qtyController
+                                                                  .text =
+                                                                  '$tempQty';
+                                                            });
+                                                          }
+                                                        },
+                                                        color: tempQty <
+                                                                cartItem
+                                                                    .maxQuantity
+                                                            ? Color(0xffd41818)
+                                                            : Colors.grey[300]!,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                SizedBox(height: 8),
+                                                Text(
+                                                  'Max: ${cartItem.maxQuantity}',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.grey[400],
+                                                  ),
+                                                ),
+                                                SizedBox(height: 20),
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: TextButton(
+                                                        onPressed: () =>
+                                                            Navigator.of(ctx)
+                                                                .pop(),
+                                                        style: TextButton
+                                                            .styleFrom(
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                                  vertical: 13),
+                                                          shape:
+                                                              RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                            side: BorderSide(
+                                                                color: Colors
+                                                                    .grey[300]!),
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          'Cancel',
+                                                          style: TextStyle(
+                                                            color: Colors
+                                                                .grey[600],
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: 12),
+                                                    Expanded(
+                                                      flex: 2,
+                                                      child: ElevatedButton(
+                                                        onPressed: () {
+                                                          final qty =
+                                                              int.tryParse(
+                                                                  _qtyController
+                                                                      .text);
+                                                          if (qty != null) {
+                                                            _updateQuantity(
+                                                                index, qty);
+                                                          }
+                                                          Navigator.of(ctx)
+                                                              .pop();
+                                                        },
+                                                        style: ElevatedButton
+                                                            .styleFrom(
+                                                          backgroundColor:
+                                                              Color(0xffd41818),
+                                                          foregroundColor:
+                                                              Colors.white,
+                                                          padding: EdgeInsets
+                                                              .symmetric(
+                                                                  vertical: 13),
+                                                          elevation: 0,
+                                                          shape:
+                                                              RoundedRectangleBorder(
+                                                            borderRadius:
+                                                                BorderRadius
+                                                                    .circular(
+                                                                        12),
+                                                          ),
+                                                        ),
+                                                        child: Text(
+                                                          'Update',
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Container(
                                   padding: EdgeInsets.symmetric(
                                     vertical: 12,
                                     horizontal: 6,
@@ -2989,6 +3304,7 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ],
                                   ),
+                                ),
                                 );
                               }).toList()),
                             ],

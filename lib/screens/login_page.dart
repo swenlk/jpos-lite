@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:lite/api/endpoints.dart';
 import 'package:lite/screens/home_page.dart';
+import 'package:lite/utils/app_colors.dart';
 import 'package:lite/utils/app_configs.dart';
 import 'package:lite/utils/snackbar_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -226,6 +227,21 @@ class _LoginPageState extends State<LoginPage> {
                                 ),
                               ],
                             ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 16.0),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: const Text(
+                            'Contact your administrator or register your company on our website.',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                              height: 1.4,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
                         ),
 

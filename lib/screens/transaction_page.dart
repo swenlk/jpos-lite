@@ -176,10 +176,10 @@ class _TransactionPageState extends State<TransactionPage> {
               message: 'No transactions found for the selected date range.',
             );
           } else {
-            SnackbarManager.showSuccess(
-              context,
-              message: 'Found ${_transactions.length} transaction(s)',
-            );
+            // SnackbarManager.showSuccess(
+            //   context,
+            //   message: 'Found ${_transactions.length} transaction(s)',
+            // );
           }
         } else {
           final errorMessage = jsonResponse['status_description'] ??
