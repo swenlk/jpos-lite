@@ -1,0 +1,83 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "flutter_blue_plus_darwin-7.0.3",
+          "kind" : "fileSystem",
+          "location" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/flutter_blue_plus_darwin-7.0.3",
+          "name" : "flutter_blue_plus_darwin"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/flutter_blue_plus_darwin-7.0.3"
+        },
+        "subpath" : "flutter_blue_plus_darwin-7.0.3"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "flutterframework",
+          "kind" : "fileSystem",
+          "location" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework",
+          "name" : "FlutterFramework"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/FlutterFramework"
+        },
+        "subpath" : "flutterframework"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "mobile_scanner-7.4.1",
+          "kind" : "fileSystem",
+          "location" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/mobile_scanner-7.4.1",
+          "name" : "mobile_scanner"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/mobile_scanner-7.4.1"
+        },
+        "subpath" : "mobile_scanner-7.4.1"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "path_provider_foundation-2.4.2",
+          "kind" : "fileSystem",
+          "location" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/path_provider_foundation-2.4.2",
+          "name" : "path_provider_foundation"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/path_provider_foundation-2.4.2"
+        },
+        "subpath" : "path_provider_foundation-2.4.2"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "shared_preferences_foundation-2.5.4",
+          "kind" : "fileSystem",
+          "location" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.4",
+          "name" : "shared_preferences_foundation"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/Volumes/ExternalSSD/Projects/Mbiz/jpos-lite/ios/Flutter/ephemeral/Packages/.packages/shared_preferences_foundation-2.5.4"
+        },
+        "subpath" : "shared_preferences_foundation-2.5.4"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

@@ -38,5 +38,23 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    target.build_configurations.each do |config|
+      # permission_handler compiles every permission out unless its macro is set,
+      # which makes requests return permanentlyDenied without ever prompting.
+      # Only the permissions this app actually requests are enabled here.
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+
+        ## dart: PermissionGroup.camera
+        'PERMISSION_CAMERA=1',
+
+        ## dart: PermissionGroup.location
+        'PERMISSION_LOCATION=1',
+
+        ## dart: PermissionGroup.bluetooth
+        'PERMISSION_BLUETOOTH=1',
+      ]
+    end
   end
 end
